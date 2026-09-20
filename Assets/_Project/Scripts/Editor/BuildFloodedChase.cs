@@ -87,13 +87,28 @@ namespace MonsterChase.EditorTools
             int hides = PlaceHidingSpots(root, centre);
             DressWithBlood(root, anchors);
 
+            var ammoPoints = new List<Vector3>();
+            var ammoOffsets = new[]
+            {
+                new Vector3(-30f, 0f,  48f), new Vector3( 50f, 0f,  25f),
+                new Vector3( 28f, 0f, -48f), new Vector3(-52f, 0f, -18f),
+                new Vector3(  5f, 0f,   8f), new Vector3(-12f, 0f, -58f),
+            };
+            foreach (var o in ammoOffsets)
+            {
+                var want = PlaceOn(centre + o, 0.05f);
+                if (NavMesh.SamplePosition(want, out var hit, 10f, NavMesh.AllAreas))
+                    ammoPoints.Add(hit.position);
+            }
+            int boxes = BuildHospital.ScatterAmmo(root, ammoPoints);
+
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
             RegisterScenes();
 
             Debug.Log($"[Flooded] Built {ScenePath}. Play area {PlaySize}m around the village, " +
-                      $"{anchors.Count} bodies to burn, {hides} places to hide, patrol ring of " +
-                      $"{patrol.transform.childCount}. Hold SPACE to hold your breath.");
+                      $"{anchors.Count} bodies to burn, {hides} places to hide, {boxes} ammo boxes, " +
+                      $"patrol ring of {patrol.transform.childCount}. Hold SPACE to hold your breath.");
         }
 
         // ------------------------------------------------------------- terrain

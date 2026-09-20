@@ -19,6 +19,9 @@ namespace MonsterChase.Player
         [SerializeField] float shotsPerSecond = 4f;
         [SerializeField] float range = 90f;
         [SerializeField] int magazine = 12;
+        [Tooltip("Rounds carried outside the magazine. Reloading draws from here.")]
+        [SerializeField] int reserve = 24;
+        [SerializeField] int reserveMax = 96;
         [SerializeField] float reloadSeconds = 1.8f;
         [SerializeField] LayerMask hits = ~0;
 
@@ -39,7 +42,17 @@ namespace MonsterChase.Player
 
         public int Ammo { get; private set; }
         public int Magazine => magazine;
+        public int Reserve => reserve;
+        public int ReserveMax => reserveMax;
         public bool Reloading => Time.time < reloadUntil;
+
+        /// <summary>Returns what was actually taken, so a full player leaves the box alone.</summary>
+        public int AddAmmo(int rounds)
+        {
+            int before = reserve;
+            reserve = Mathf.Clamp(reserve + rounds, 0, reserveMax);
+            return reserve - before;
+        }
 
         void Awake()
         {
@@ -57,7 +70,13 @@ namespace MonsterChase.Player
             if (Reloading)
             {
                 TickReloadAudio();
-                if (Time.time >= reloadUntil && Ammo == 0) Ammo = magazine;
+                if (Time.time >= reloadUntil)
+                {
+                    int wanted = magazine - Ammo;
+                    int taken = Mathf.Min(wanted, reserve);
+                    Ammo += taken;
+                    reserve -= taken;
+                }
                 return;
             }
 
@@ -74,7 +93,8 @@ namespace MonsterChase.Player
 
         void BeginReload()
         {
-            if (Reloading || Ammo == magazine) return;
+            // Nothing to reload from is not a reload, it is a click and a dry sound.
+            if (Reloading || Ammo == magazine || reserve <= 0) return;
             reloadUntil = Time.time + reloadSeconds;
             reloadStep = 0;
             nextReloadStep = Time.time;

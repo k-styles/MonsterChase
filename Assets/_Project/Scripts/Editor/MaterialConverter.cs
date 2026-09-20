@@ -27,6 +27,79 @@ namespace MonsterChase.EditorTools
             ("_Color", "_BaseColor"),
         };
 
+        /// <summary>
+        /// Materials a ParticleSystemRenderer draws with. They must never go to
+        /// URP/Lit: a lit opaque shader on a particle draws a solid block instead of a
+        /// soft sprite, which is exactly what happened to the falling leaves.
+        /// </summary>
+        static HashSet<Material> ParticleMaterials()
+        {
+            var set = new HashSet<Material>();
+
+            void Collect(GameObject go)
+            {
+                foreach (var pr in go.GetComponentsInChildren<ParticleSystemRenderer>(true))
+                {
+                    if (pr.sharedMaterial != null) set.Add(pr.sharedMaterial);
+                    if (pr.trailMaterial != null) set.Add(pr.trailMaterial);
+                }
+            }
+
+            foreach (var guid in AssetDatabase.FindAssets("t:Prefab"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (path.StartsWith("Packages/")) continue;
+                var go = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                if (go != null) Collect(go);
+            }
+
+            foreach (var ps in Object.FindObjectsByType<ParticleSystem>(FindObjectsSortMode.None))
+                Collect(ps.gameObject);
+
+            return set;
+        }
+
+        [MenuItem("MonsterChase/Repair Particle Materials")]
+        public static void RepairParticles()
+        {
+            var particleShader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            if (particleShader == null)
+            {
+                Debug.LogError("[Repair] URP Particles/Unlit shader not found.");
+                return;
+            }
+
+            int fixedUp = 0;
+            foreach (var m in ParticleMaterials())
+            {
+                if (m == null || m.shader == null) continue;
+                if (m.shader.name != "Universal Render Pipeline/Lit"
+                    && m.shader.name != "Standard"
+                    && !m.shader.name.StartsWith("Legacy Shaders/")) continue;
+
+                var tex = m.HasProperty("_BaseMap") ? m.GetTexture("_BaseMap")
+                        : m.HasProperty("_MainTex") ? m.GetTexture("_MainTex") : null;
+                var col = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor")
+                        : m.HasProperty("_Color") ? m.GetColor("_Color") : Color.white;
+
+                m.shader = particleShader;
+                if (tex != null && m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
+                if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", col);
+
+                // Soft and additive-friendly, which is what foliage and smoke want.
+                if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);   // transparent
+                if (m.HasProperty("_Blend")) m.SetFloat("_Blend", 0f);       // alpha
+                m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+
+                EditorUtility.SetDirty(m);
+                fixedUp++;
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log($"[Repair] {fixedUp} particle materials moved to URP/Particles/Unlit.");
+        }
+
         [MenuItem("MonsterChase/Convert Pack Materials to URP")]
         public static void Convert()
         {
@@ -36,6 +109,10 @@ namespace MonsterChase.EditorTools
                 Debug.LogError("[Convert] URP/Lit shader not found. Is the URP package installed?");
                 return;
             }
+
+            // Anything a particle system draws with is handled separately -- sending it
+            // to URP/Lit is what turned the falling leaves into solid blocks.
+            var particleMats = ParticleMaterials();
 
             int converted = 0, skipped = 0;
             var touched = new List<string>();
@@ -47,6 +124,7 @@ namespace MonsterChase.EditorTools
 
                 var m = AssetDatabase.LoadAssetAtPath<Material>(path);
                 if (m == null || m.shader == null) continue;
+                if (particleMats.Contains(m)) { skipped++; continue; }
 
                 var name = m.shader.name;
                 bool builtIn = name == "Standard" || name == "Standard (Specular setup)"
@@ -88,7 +166,8 @@ namespace MonsterChase.EditorTools
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log($"[Convert] {converted} materials moved to URP/Lit, {skipped} already fine. " +
+            RepairParticles();
+            Debug.Log($"[Convert] {converted} materials moved to URP/Lit, {skipped} left alone. " +
                       (touched.Count > 0 ? "e.g. " + string.Join(", ", touched) : ""));
         }
 

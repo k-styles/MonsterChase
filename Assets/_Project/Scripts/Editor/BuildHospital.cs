@@ -83,6 +83,15 @@ namespace MonsterChase.EditorTools
             BuildImpacts();
             DressWithBlood(root, rooms);
 
+            float ax = CoreHalfW + Corridor * 0.5f, az = CoreHalfD + Corridor * 0.5f;
+            var ammoPoints = new List<Vector3>
+            {
+                new Vector3(-ax * 0.6f, 0f,  az), new Vector3( ax * 0.6f, 0f, -az),
+                new Vector3( ax, 0f, -az * 0.5f), new Vector3(-ax, 0f,  az * 0.5f),
+                new Vector3( 0f, 0f,  az),
+            };
+            Debug.Log($"[Hospital] {ScatterAmmo(root, ammoPoints)} ammo boxes placed.");
+
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
             RegisterScene();
@@ -673,6 +682,14 @@ namespace MonsterChase.EditorTools
             so.FindProperty("burnFill").objectReferenceValue = burnFill;
             so.FindProperty("prompt").objectReferenceValue = prompt;
             so.ApplyModifiedPropertiesWithoutUndo();
+
+            var ammo = UiKit.NewText("Ammo", canvasGo.transform, 40, TextAnchor.LowerRight);
+            UiKit.Place(ammo.rectTransform, 0.70f, 0.96f, 0.05f, 0.12f);
+            var counter = canvasGo.AddComponent<MonsterChase.UI.AmmoCounter>();
+            var aso = new SerializedObject(counter);
+            aso.FindProperty("label").objectReferenceValue = ammo;
+            aso.ApplyModifiedPropertiesWithoutUndo();
+
             return hud;
         }
 
@@ -839,6 +856,39 @@ namespace MonsterChase.EditorTools
                 emission.rateOverTime = 0f;
                 emission.rateOverDistance = 0f;
             }
+        }
+
+        /// <summary>
+        /// Boxes of rounds, out in the open on purpose: going for ammo should mean
+        /// leaving cover while something is hunting you.
+        /// </summary>
+        internal static int ScatterAmmo(Transform parent, IList<Vector3> points, int roundsEach = 12)
+        {
+            var holder = new GameObject("AmmoBoxes").transform;
+            holder.SetParent(parent, false);
+
+            var mat = HospitalKit.Mat("AmmoBox", new Color(0.30f, 0.33f, 0.24f));
+            int made = 0;
+
+            foreach (var at in points)
+            {
+                var box = HospitalKit.Box(holder, $"Ammo_{made:D2}", at + Vector3.up * 0.09f,
+                                          new Vector3(0.34f, 0.18f, 0.22f), mat);
+                box.GetComponent<Collider>().isTrigger = true;
+
+                var lid = HospitalKit.Box(box.transform, "Lid", at + Vector3.up * 0.19f,
+                                          new Vector3(0.36f, 0.03f, 0.24f),
+                                          HospitalKit.Mat("AmmoLid", new Color(0.42f, 0.36f, 0.20f)), collider: false);
+                lid.transform.SetParent(box.transform, true);
+
+                var pickup = box.AddComponent<MonsterChase.Player.AmmoPickup>();
+                var so = new SerializedObject(pickup);
+                so.FindProperty("rounds").intValue = roundsEach;
+                so.FindProperty("pickupClip").objectReferenceValue = FindClip("handgun_weapon_equip");
+                so.ApplyModifiedPropertiesWithoutUndo();
+                made++;
+            }
+            return made;
         }
 
         static void RegisterScene()

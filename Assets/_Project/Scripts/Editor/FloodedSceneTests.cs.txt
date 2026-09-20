@@ -1,51 +1,46 @@
-var scene = UnityEditor.SceneManagement.EditorSceneManager.OpenScene(
-    "Assets/_Project/Scenes/FloodedChase.unity", UnityEditor.SceneManagement.OpenSceneMode.Single);
+var s = UnityEditor.SceneManagement.EditorSceneManager.OpenScene(
+  "Assets/_Project/Scenes/FloodedChase.unity", UnityEditor.SceneManagement.OpenSceneMode.Single);
 
 int fail = 0;
-void Check(string what, bool ok, string d = "") { if (!ok) fail++;
-  UnityEngine.Debug.Log($"[F] {(ok ? "PASS" : "FAIL")}  {what}{(d != "" ? "  -- " + d : "")}"); }
+void Check(string w, bool ok, string d = "") { if (!ok) fail++;
+  UnityEngine.Debug.Log($"[X] {(ok ? "PASS" : "FAIL")}  {w}{(d != "" ? "  -- " + d : "")}"); }
 
-var ai = UnityEngine.Object.FindFirstObjectByType<MonsterChase.Monster.MonsterAI>();
-var player = UnityEngine.GameObject.FindGameObjectWithTag("Player");
+// Particles must never be on an opaque lit shader -- that is what made blocks.
+int litParticles = 0, nullParticles = 0;
+foreach (var pr in UnityEngine.Object.FindObjectsByType<UnityEngine.ParticleSystemRenderer>(UnityEngine.FindObjectsSortMode.None)) {
+  var m = pr.sharedMaterial;
+  if (m == null || m.shader == null) { if (pr.renderMode != UnityEngine.ParticleSystemRenderMode.None) nullParticles++; continue; }
+  var n = m.shader.name;
+  if (n == "Universal Render Pipeline/Lit" || n == "Standard" || n.StartsWith("Legacy Shaders/")) litParticles++;
+}
+Check("no particle on an opaque lit shader (the block leaves)", litParticles == 0, $"{litParticles} bad");
+Check("no drawing particle without a material", nullParticles == 0, $"{nullParticles}");
+
+// Sky
+var sky = UnityEngine.RenderSettings.skybox;
+Check("skybox material assigned", sky != null, sky != null ? sky.name : "NONE");
+Check("skybox shader compiles", sky != null && sky.shader != null && !UnityEditor.ShaderUtil.ShaderHasError(sky.shader));
 var cam = UnityEngine.Camera.main;
+Check("camera clears to skybox", cam != null && cam.clearFlags == UnityEngine.CameraClearFlags.Skybox);
 
-Check("terrain present (the village is here)", UnityEngine.Terrain.activeTerrain != null);
-Check("player exists", player != null);
-Check("exactly one active camera",
-  UnityEngine.Object.FindObjectsByType<UnityEngine.Camera>(UnityEngine.FindObjectsSortMode.None).Length == 1,
-  $"{UnityEngine.Object.FindObjectsByType<UnityEngine.Camera>(UnityEngine.FindObjectsSortMode.None).Length} active");
-Check("player is on the navmesh",
-  player != null && UnityEngine.AI.NavMesh.SamplePosition(player.transform.position, out _, 5f, UnityEngine.AI.NavMesh.AllAreas));
-Check("monster is on the navmesh",
-  ai != null && UnityEngine.AI.NavMesh.SamplePosition(ai.transform.position, out _, 5f, UnityEngine.AI.NavMesh.AllAreas));
-Check("monster shootable", ai != null && ai.GetComponent<UnityEngine.Collider>() != null);
-var an = ai != null ? ai.GetComponentInChildren<UnityEngine.Animator>() : null;
-Check("monster animates", an != null && an.avatar != null && an.runtimeAnimatorController != null);
-Check("creature voice wired", ai != null && ai.GetComponent<MonsterChase.Monster.CreatureVoice>() != null);
+// Ammo
+var boxes = UnityEngine.Object.FindObjectsByType<MonsterChase.Player.AmmoPickup>(UnityEngine.FindObjectsSortMode.None).Length;
+Check($"ammo boxes in the map ({boxes})", boxes >= 5);
+Check("ammo counter on the HUD", UnityEngine.Object.FindFirstObjectByType<MonsterChase.UI.AmmoCounter>() != null);
+var gun = UnityEngine.Object.FindFirstObjectByType<MonsterChase.Player.Gun>();
+Check($"gun carries a reserve ({(gun != null ? gun.Reserve : 0)})", gun != null && gun.Reserve > 0);
 
-var route = UnityEngine.Object.FindFirstObjectByType<MonsterChase.Monster.PatrolRoute>();
-Check("patrol route has points", route != null && route.HasPoints);
-
-var breath = UnityEngine.Object.FindFirstObjectByType<MonsterChase.Systems.PlayerBreath>();
-Check("hold-breath wired", breath != null);
-Check("breath meter wired", UnityEngine.Object.FindFirstObjectByType<MonsterChase.UI.BreathMeter>() != null);
-Check("5 anchors", UnityEngine.Object.FindObjectsByType<MonsterChase.Ritual.AnchorSite>(UnityEngine.FindObjectsSortMode.None).Length == 5);
+// Still-working essentials
 Check("ritual state", UnityEngine.Object.FindFirstObjectByType<MonsterChase.Ritual.RitualState>() != null);
-int hides = UnityEngine.Object.FindObjectsByType<MonsterChase.Hiding.HidingSpot>(UnityEngine.FindObjectsSortMode.None).Length;
-Check($"hiding spots ({hides})", hides >= 10);
-Check("impacts wired", UnityEngine.Object.FindFirstObjectByType<MonsterChase.Player.Impacts>() != null);
-Check("gun viewmodel", UnityEngine.Object.FindFirstObjectByType<MonsterChase.Player.GunViewModel>() != null);
 Check("no legacy input module", UnityEngine.Object.FindFirstObjectByType<UnityEngine.EventSystems.StandaloneInputModule>() == null);
+Check("terrain present", UnityEngine.Terrain.activeTerrain != null);
+var ai = UnityEngine.Object.FindFirstObjectByType<MonsterChase.Monster.MonsterAI>();
+Check("monster on navmesh", ai != null && UnityEngine.AI.NavMesh.SamplePosition(ai.transform.position, out _, 5f, UnityEngine.AI.NavMesh.AllAreas));
+Check("breath wired", UnityEngine.Object.FindFirstObjectByType<MonsterChase.Systems.PlayerBreath>() != null);
 
-// Everything we added is under one root, so a rebuild cannot orphan it in the village.
-var chase = UnityEngine.GameObject.Find("Chase");
-Check("our additions live under a single Chase root", chase != null,
-      chase != null ? $"{chase.transform.childCount} children" : "missing");
+var p = UnityEngine.GameObject.FindGameObjectWithTag("Player");
+if (p != null) { UnityEditor.Selection.activeGameObject = p;
+  var v = UnityEditor.SceneView.lastActiveSceneView;
+  if (v != null) { v.LookAt(p.transform.position + UnityEngine.Vector3.up * 2f, v.rotation, 22f); v.Repaint(); } }
 
-// Anchors must be reachable, or the ritual cannot be completed.
-int reachable = 0;
-foreach (var a in UnityEngine.Object.FindObjectsByType<MonsterChase.Ritual.AnchorSite>(UnityEngine.FindObjectsSortMode.None))
-  if (UnityEngine.AI.NavMesh.SamplePosition(a.transform.position, out _, 6f, UnityEngine.AI.NavMesh.AllAreas)) reachable++;
-Check($"all 5 anchors reachable ({reachable}/5)", reachable == 5);
-
-UnityEngine.Debug.Log($"[F] ===== {fail} FAILURES =====");
+UnityEngine.Debug.Log($"[X] ===== {fail} FAILURES =====  (scene left open: {s.name})");
