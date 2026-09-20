@@ -28,12 +28,23 @@ namespace MonsterChase.EditorTools
             return canvas;
         }
 
+        /// <summary>
+        /// This project is Input System only (activeInputHandler: 1), so the EventSystem
+        /// must use InputSystemUIInputModule. StandaloneInputModule reads the legacy
+        /// UnityEngine.Input class, which throws every frame under that setting and
+        /// leaves every button in the game unclickable.
+        /// </summary>
         public static void EnsureEventSystem()
         {
             if (Object.FindFirstObjectByType<UnityEngine.EventSystems.EventSystem>() != null) return;
+
             var es = new GameObject("EventSystem");
             es.AddComponent<UnityEngine.EventSystems.EventSystem>();
-            es.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+
+            var module = es.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
+            // Without actions assigned the module is inert, and adding it from an editor
+            // script does not fill them in the way the Inspector's Add Component does.
+            module.AssignDefaultActions();
         }
 
         public static Text NewText(string name, Transform parent, int size, TextAnchor anchor)
