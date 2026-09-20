@@ -508,11 +508,38 @@ namespace MonsterChase.EditorTools
             anso.FindProperty("agent").objectReferenceValue = agent;
             anso.ApplyModifiedPropertiesWithoutUndo();
 
+            var mouth = go.AddComponent<AudioSource>();
+            mouth.playOnAwake = false;
+            mouth.spatialBlend = 1f;
+            mouth.rolloffMode = AudioRolloffMode.Linear;
+            mouth.minDistance = 4f;
+            mouth.maxDistance = 55f;
+
             var ai = go.AddComponent<MonsterAI>();
             var aiso = new SerializedObject(ai);
             aiso.FindProperty("player").objectReferenceValue = player;
             aiso.FindProperty("route").objectReferenceValue = route;
             aiso.ApplyModifiedPropertiesWithoutUndo();
+
+            var voice = go.AddComponent<CreatureVoice>();
+            var vso = new SerializedObject(voice);
+            vso.FindProperty("ai").objectReferenceValue = ai;
+            vso.FindProperty("mouth").objectReferenceValue = mouth;
+            vso.FindProperty("player").objectReferenceValue = player;
+            FillClips(vso.FindProperty("roars"), "sfx_roar_1", "sfx_roar_2", "sfx_roar_3");
+            FillClips(vso.FindProperty("snarls"), "sfx_snarl_1", "sfx_snarl_2", "sfx_snarl_3");
+            FillClips(vso.FindProperty("noticeSounds"), "cre_screech_1", "cre_screech_2");
+            vso.ApplyModifiedPropertiesWithoutUndo();
+
+            var constant = go.AddComponent<AudioSource>();
+            constant.clip = FindClip("cre_growl_constant");
+            constant.loop = true;
+            constant.playOnAwake = true;
+            constant.spatialBlend = 1f;
+            constant.rolloffMode = AudioRolloffMode.Linear;
+            constant.minDistance = 4f;
+            constant.maxDistance = 34f;
+            constant.volume = 0.6f;
 
             return vitals;
         }
@@ -619,6 +646,7 @@ namespace MonsterChase.EditorTools
                 var anchor = body.AddComponent<AnchorSite>();
                 var aso = new SerializedObject(anchor);
                 aso.FindProperty("fireLight").objectReferenceValue = l;
+                aso.FindProperty("fire").objectReferenceValue = AttachFire(body.transform);
                 aso.ApplyModifiedPropertiesWithoutUndo();
             }
         }
@@ -785,6 +813,37 @@ namespace MonsterChase.EditorTools
             // And a few in the rooms themselves, so cover is not clean either.
             for (int i = 0; i < rooms.Count; i += 4)
                 Spawn(pool, holder, rooms[i].Centre + new Vector3(0.6f, 0.02f, 0.4f), i * 37f);
+        }
+
+        /// <summary>
+        /// Attaches the fire that plays when a body is burnt, and hands back its root
+        /// ParticleSystem for AnchorSite to start and stop.
+        ///
+        /// Body-sized rather than bonfire-sized: a floor fire reads as a corpse
+        /// alight, where the big variants read as a burning building.
+        /// </summary>
+        internal static ParticleSystem AttachFire(Transform parent)
+        {
+            var prefab = FindPrefab("VFX_Fire_Floor_02_Smoke") ?? FindPrefab("VFX_Fire_Floor_01_Smoke");
+            if (prefab == null)
+            {
+                Debug.LogWarning("[Fire] Fire VFX not found; burnt bodies will just glow.");
+                return null;
+            }
+
+            var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, parent);
+            go.name = "Fire";
+            go.transform.localPosition = new Vector3(0f, 0.05f, 0f);
+            go.transform.localScale = Vector3.one * 0.75f;
+
+            // AnchorSite stops it on Start; it must not be burning before you light it.
+            var root = go.GetComponent<ParticleSystem>() ?? go.GetComponentInChildren<ParticleSystem>();
+            foreach (var ps in go.GetComponentsInChildren<ParticleSystem>(true))
+            {
+                var main = ps.main;
+                main.playOnAwake = false;
+            }
+            return root;
         }
 
         /// <summary>Fills a serialized AudioClip array by clip name, skipping any that are missing.</summary>

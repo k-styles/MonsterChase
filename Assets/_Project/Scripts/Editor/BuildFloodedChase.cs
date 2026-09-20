@@ -201,6 +201,7 @@ namespace MonsterChase.EditorTools
                 var anchor = body.AddComponent<AnchorSite>();
                 var so = new SerializedObject(anchor);
                 so.FindProperty("fireLight").objectReferenceValue = l;
+                so.FindProperty("fire").objectReferenceValue = BuildHospital.AttachFire(body.transform);
                 so.ApplyModifiedPropertiesWithoutUndo();
                 list.Add(anchor);
             }

@@ -59,6 +59,106 @@ namespace MonsterChase.EditorTools
             return set;
         }
 
+        /// <summary>
+        /// Unity's Tree Creator shaders do not exist under URP, so every tree on a
+        /// terrain built with them renders magenta. Bark becomes an opaque URP/Lit;
+        /// leaves become URP/Lit with alpha clipping, which is the nearest honest
+        /// equivalent -- the billboard crossfade and wind of the original are lost.
+        /// </summary>
+        [MenuItem("MonsterChase/Repair Tree Materials")]
+        public static void RepairTrees()
+        {
+            var lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (lit == null) { Debug.LogError("[Trees] URP/Lit not found."); return; }
+
+            int bark = 0, leaves = 0;
+            foreach (var guid in AssetDatabase.FindAssets("t:Material"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (path.StartsWith("Packages/")) continue;
+                var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (m == null || m.shader == null) continue;
+
+                var n = m.shader.name;
+                if (!n.Contains("Tree Creator") && !n.Contains("Tree Soft Occlusion")) continue;
+
+                bool isLeaf = n.Contains("Leaves");
+                var tex = m.HasProperty("_MainTex") ? m.GetTexture("_MainTex") : null;
+                var col = m.HasProperty("_Color") ? m.GetColor("_Color") : Color.white;
+                float cutoff = m.HasProperty("_Cutoff") ? m.GetFloat("_Cutoff") : 0.5f;
+
+                m.shader = lit;
+                if (tex != null && m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
+                if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", col);
+                if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.05f);
+
+                if (isLeaf)
+                {
+                    // Leaves are a texture with holes in it. Without alpha clipping
+                    // every leaf card renders as a solid rectangle.
+                    if (m.HasProperty("_AlphaClip")) m.SetFloat("_AlphaClip", 1f);
+                    if (m.HasProperty("_Cutoff")) m.SetFloat("_Cutoff", Mathf.Max(0.35f, cutoff));
+                    m.EnableKeyword("_ALPHATEST_ON");
+                    m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
+                    // Leaf cards are visible from behind.
+                    if (m.HasProperty("_Cull")) m.SetFloat("_Cull", 0f);
+                    leaves++;
+                }
+                else bark++;
+
+                EditorUtility.SetDirty(m);
+            }
+
+            // Tree Creator stores its optimised bark/leaf materials as sub-assets inside
+            // the tree prefab, so a scan of standalone .mat files never sees them. Those
+            // are the ones that were still magenta. Walk the terrain's prototypes.
+            foreach (var terrain in Object.FindObjectsByType<Terrain>(FindObjectsSortMode.None))
+            {
+                if (terrain.terrainData == null) continue;
+                foreach (var proto in terrain.terrainData.treePrototypes)
+                {
+                    if (proto.prefab == null) continue;
+                    foreach (var r in proto.prefab.GetComponentsInChildren<Renderer>(true))
+                        foreach (var m in r.sharedMaterials)
+                        {
+                            if (m == null || m.shader == null) continue;
+                            var sn = m.shader.name;
+                            if (!sn.Contains("Tree Creator") && !sn.Contains("Tree Soft Occlusion")) continue;
+
+                            bool leaf = sn.Contains("Leaves");
+                            ConvertTreeMaterial(m, lit, leaf);
+                            if (leaf) leaves++; else bark++;
+                        }
+                }
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log($"[Trees] {bark} bark and {leaves} leaf materials moved to URP/Lit.");
+        }
+
+        static void ConvertTreeMaterial(Material m, Shader lit, bool isLeaf)
+        {
+            var tex = m.HasProperty("_MainTex") ? m.GetTexture("_MainTex") : null;
+            var col = m.HasProperty("_Color") ? m.GetColor("_Color") : Color.white;
+            float cutoff = m.HasProperty("_Cutoff") ? m.GetFloat("_Cutoff") : 0.5f;
+
+            m.shader = lit;
+            if (tex != null && m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", col);
+            if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.05f);
+
+            if (isLeaf)
+            {
+                if (m.HasProperty("_AlphaClip")) m.SetFloat("_AlphaClip", 1f);
+                if (m.HasProperty("_Cutoff")) m.SetFloat("_Cutoff", Mathf.Max(0.35f, cutoff));
+                m.EnableKeyword("_ALPHATEST_ON");
+                m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
+                if (m.HasProperty("_Cull")) m.SetFloat("_Cull", 0f);   // leaf cards are two-sided
+            }
+            EditorUtility.SetDirty(m);
+        }
+
         [MenuItem("MonsterChase/Repair Particle Materials")]
         public static void RepairParticles()
         {
@@ -167,6 +267,7 @@ namespace MonsterChase.EditorTools
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             RepairParticles();
+            RepairTrees();
             Debug.Log($"[Convert] {converted} materials moved to URP/Lit, {skipped} left alone. " +
                       (touched.Count > 0 ? "e.g. " + string.Join(", ", touched) : ""));
         }
@@ -185,7 +286,9 @@ namespace MonsterChase.EditorTools
 
                 var n = m.shader.name;
                 if (n == "Standard" || n == "Standard (Specular setup)" ||
-                    n.StartsWith("Legacy Shaders/") || n.Contains("HDRP") || n == "Hidden/InternalErrorShader")
+                    n.StartsWith("Legacy Shaders/") || n.Contains("HDRP") ||
+                    n.Contains("Tree Creator") || n.Contains("Tree Soft Occlusion") ||
+                    n == "Hidden/InternalErrorShader" || !m.shader.isSupported)
                 {
                     if (bad < 8) Debug.LogWarning($"[Audit] {n}  <-  {path}");
                     bad++;
