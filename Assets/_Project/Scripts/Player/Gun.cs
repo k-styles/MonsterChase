@@ -40,12 +40,13 @@ namespace MonsterChase.Player
         float reloadUntil;
         int reloadStep;
         float nextReloadStep;
+        bool reloading;
 
         public int Ammo { get; private set; }
         public int Magazine => magazine;
         public int Reserve => reserve;
         public int ReserveMax => reserveMax;
-        public bool Reloading => Time.time < reloadUntil;
+        public bool Reloading => reloading;
 
         /// <summary>Returns what was actually taken, so a full player leaves the box alone.</summary>
         public int AddAmmo(int rounds)
@@ -69,16 +70,14 @@ namespace MonsterChase.Player
             var kb = Keyboard.current;
             if (kb != null && kb.rKey.wasPressedThisFrame) BeginReload();
 
-            if (Reloading)
+            if (reloading)
             {
                 TickReloadAudio();
-                if (Time.time >= reloadUntil)
-                {
-                    int wanted = magazine - Ammo;
-                    int taken = Mathf.Min(wanted, reserve);
-                    Ammo += taken;
-                    reserve -= taken;
-                }
+
+                // This used to sit inside `if (Reloading)` where Reloading meant
+                // "Time.time < reloadUntil", so the completion branch could never be
+                // reached and the magazine never refilled. Hence the explicit flag.
+                if (Time.time >= reloadUntil) FinishReload();
                 return;
             }
 
@@ -95,11 +94,23 @@ namespace MonsterChase.Player
 
         void BeginReload()
         {
-            // Nothing to reload from is not a reload, it is a click and a dry sound.
-            if (Reloading || Ammo == magazine || reserve <= 0) return;
+            // Nothing to reload from is not a reload. No timer, and no reload sound --
+            // hearing a magazine change with an empty pouch is what made it feel broken.
+            if (reloading || Ammo == magazine || reserve <= 0) return;
+
+            reloading = true;
             reloadUntil = Time.time + reloadSeconds;
             reloadStep = 0;
             nextReloadStep = Time.time;
+        }
+
+        void FinishReload()
+        {
+            int wanted = magazine - Ammo;
+            int taken = Mathf.Min(wanted, reserve);
+            Ammo += taken;
+            reserve -= taken;
+            reloading = false;
         }
 
         /// <summary>
@@ -108,6 +119,7 @@ namespace MonsterChase.Player
         /// </summary>
         void TickReloadAudio()
         {
+            if (!reloading) return;
             if (fireAudio == null || reloadClips == null || reloadClips.Length == 0) return;
             if (reloadStep >= reloadClips.Length || Time.time < nextReloadStep) return;
 
@@ -140,8 +152,9 @@ namespace MonsterChase.Player
 
             if (Ammo <= 0)
             {
+                // Dry click either way; only actually reload if there is something left.
                 if (fireAudio != null && drySound != null) fireAudio.PlayOneShot(drySound, 0.5f);
-                BeginReload();
+                if (reserve > 0) BeginReload();
                 return;
             }
 
@@ -151,7 +164,11 @@ namespace MonsterChase.Player
 
             if (sourceCamera == null) return;
 
-            var ray = new Ray(sourceCamera.transform.position, sourceCamera.transform.forward);
+            // Fired through the crosshair itself rather than the camera's forward axis.
+            // They are the same only when the viewport is centred and undistorted; this
+            // is always exactly where the dot is drawn.
+            var ray = sourceCamera.ScreenPointToRay(
+                new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f));
             bool connected = Physics.Raycast(ray, out var hit, range, hits, QueryTriggerInteraction.Ignore);
 
             // The tracer starts at the barrel, not the camera, or every shot appears to

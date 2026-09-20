@@ -824,8 +824,11 @@ namespace MonsterChase.EditorTools
         /// Body-sized rather than bonfire-sized: a floor fire reads as a corpse
         /// alight, where the big variants read as a burning building.
         /// </summary>
-        internal static ParticleSystem AttachFire(Transform parent)
+        internal static ParticleSystem AttachFire(Transform parent) => AttachFire(parent, out _);
+
+        internal static ParticleSystem AttachFire(Transform parent, out AudioSource crackle)
         {
+            crackle = null;
             var prefab = FindPrefab("VFX_Fire_Floor_02_Smoke") ?? FindPrefab("VFX_Fire_Floor_01_Smoke");
             if (prefab == null)
             {
@@ -851,6 +854,15 @@ namespace MonsterChase.EditorTools
                 var r = ps.GetComponent<ParticleSystemRenderer>();
                 if (r != null && r.sharedMaterial == null)
                     r.renderMode = ParticleSystemRenderMode.None;
+            }
+
+            // The pack's fire crackles on awake, so every unlit body sounded like it was
+            // already burning. Hand the source back for AnchorSite to start on ignition.
+            foreach (var a in go.GetComponentsInChildren<AudioSource>(true))
+            {
+                a.playOnAwake = false;
+                a.Stop();
+                if (crackle == null) crackle = a;
             }
             return root;
         }

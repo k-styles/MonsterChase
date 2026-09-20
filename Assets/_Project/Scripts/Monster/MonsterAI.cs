@@ -3,6 +3,7 @@ using UnityEngine.AI;
 using MonsterChase.Core;
 using MonsterChase.Hiding;
 using MonsterChase.Ritual;
+using MonsterChase;
 
 namespace MonsterChase.Monster
 {
@@ -101,6 +102,10 @@ namespace MonsterChase.Monster
 
             bool canSee = CanSeePlayer();
             sightTimer = canSee ? sightTimer + Time.deltaTime : 0f;
+
+            // Line of sight runs both ways. The first time it has you in the open is
+            // the moment the bodies stop being scenery and become the job.
+            if (canSee) Ritual.AnchorSite.MarkMonsterSeen();
 
             if (TryCatch()) return;
 

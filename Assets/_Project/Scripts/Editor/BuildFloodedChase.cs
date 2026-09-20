@@ -98,7 +98,7 @@ namespace MonsterChase.EditorTools
             BuildHospital.BuildPauseMenu();
             BuildHospital.WirePlayerLife(player, hud);
             BuildHospital.BuildImpacts();
-            WireBreath(player, hud);
+            BuildAmbience(root, monster.GetComponent<MonsterAI>());
             UiKit.EnsureEventSystem();
 
             int hides = PlaceHidingSpots(root, centre);
@@ -200,12 +200,18 @@ namespace MonsterChase.EditorTools
                 body.transform.SetParent(holder, false);
                 body.transform.position = want;
 
-                PresenceBuilder.BuildCorpse(body.transform, i);
+                var corpse = PresenceBuilder.BuildCorpse(body.transform, i);
 
+                // Sized from the corpse's own bounds rather than guessed. A box that
+                // does not cover the model means the interact ray misses and no prompt
+                // ever appears, which is exactly what was happening.
                 var col = body.AddComponent<BoxCollider>();
                 col.isTrigger = true;
-                col.center = new Vector3(0f, 0.25f, 0f);
-                col.size = new Vector3(1.8f, 0.8f, 1.0f);
+                var bounds = CorpseBounds(corpse, body.transform);
+                col.center = bounds.center;
+                col.size = new Vector3(Mathf.Max(1.2f, bounds.size.x),
+                                       Mathf.Max(0.9f, bounds.size.y),
+                                       Mathf.Max(1.2f, bounds.size.z));
 
                 var lightGo = new GameObject("FireLight");
                 lightGo.transform.SetParent(body.transform, false);
@@ -215,14 +221,31 @@ namespace MonsterChase.EditorTools
                 l.color = new Color(1f, 0.55f, 0.2f);
                 l.intensity = 6f; l.range = 14f; l.enabled = false;
 
+                var fireRoot = BuildHospital.AttachFire(body.transform, out var crackle);
+
                 var anchor = body.AddComponent<AnchorSite>();
                 var so = new SerializedObject(anchor);
                 so.FindProperty("fireLight").objectReferenceValue = l;
-                so.FindProperty("fire").objectReferenceValue = BuildHospital.AttachFire(body.transform);
+                so.FindProperty("fire").objectReferenceValue = fireRoot;
+                so.FindProperty("fireAudio").objectReferenceValue = crackle;
+                so.FindProperty("corpseVisual").objectReferenceValue = corpse;
                 so.ApplyModifiedPropertiesWithoutUndo();
                 list.Add(anchor);
             }
             return list;
+        }
+
+        /// <summary>Local-space bounds of a corpse's renderers, for sizing its trigger.</summary>
+        static Bounds CorpseBounds(GameObject corpse, Transform relativeTo)
+        {
+            var renderers = corpse != null ? corpse.GetComponentsInChildren<Renderer>(true) : null;
+            if (renderers == null || renderers.Length == 0)
+                return new Bounds(new Vector3(0f, 0.3f, 0f), new Vector3(1.8f, 0.8f, 1.0f));
+
+            var world = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++) world.Encapsulate(renderers[i].bounds);
+
+            return new Bounds(relativeTo.InverseTransformPoint(world.center), world.size);
         }
 
         static PatrolRoute BuildPatrolRing(Transform root, Vector3 centre)
@@ -381,6 +404,36 @@ namespace MonsterChase.EditorTools
             foreach (var a in anchors)
                 BuildHospital.Spawn(pool, holder, a.transform.position + Vector3.up * 0.03f,
                                     Random.Range(0f, 360f));
+        }
+
+        /// <summary>The looping bed, ducked while it is hunting you.</summary>
+        static void BuildAmbience(Transform root, MonsterAI monster)
+        {
+            var clip = BuildHospital.FindClip("amb_whispers_in_the_dark");
+            if (clip == null)
+            {
+                Debug.LogWarning("[Flooded] Ambience track not found; the village will be silent.");
+                return;
+            }
+
+            var go = new GameObject("Ambience");
+            go.transform.SetParent(root, false);
+
+            var bed = go.AddComponent<AudioSource>();
+            bed.clip = clip;
+            bed.loop = true;
+            bed.playOnAwake = true;
+            bed.spatialBlend = 0f;      // it is a score, not a thing in the world
+            bed.volume = 0f;            // faded up by the director
+            bed.priority = 200;
+
+            var director = go.AddComponent<AmbienceDirector>();
+            var so = new SerializedObject(director);
+            so.FindProperty("bed").objectReferenceValue = bed;
+            so.FindProperty("monster").objectReferenceValue = monster;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            Debug.Log($"[Flooded] Ambience: {clip.name} ({clip.length:F0}s), ducked while hunted.");
         }
 
         static void RegisterScenes()

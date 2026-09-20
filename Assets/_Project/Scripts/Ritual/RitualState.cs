@@ -35,6 +35,10 @@ namespace MonsterChase.Ritual
             // Last one wins rather than first, so reloading a scene cannot leave a
             // destroyed instance behind that every anchor then talks to.
             Instance = this;
+
+            // Statics survive a scene reload, so a restart would otherwise begin with
+            // the monster already "seen" and every body burnable from the off.
+            AnchorSite.ResetSightings();
         }
 
         void OnDestroy()

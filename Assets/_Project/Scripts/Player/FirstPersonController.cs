@@ -21,6 +21,13 @@ namespace MonsterChase.Player
         [SerializeField] float standHeight = 1.8f;
         [SerializeField] float crouchHeight = 0.9f;
         [SerializeField] float crouchLerp = 10f;
+        [Tooltip("Eye height standing. Crouching drops the camera by the height difference, which is what makes it read as sitting down rather than shrinking.")]
+        [SerializeField] float standEyeHeight = 1.65f;
+
+        [Header("Jump")]
+        [SerializeField] float jumpHeight = 1.1f;
+        [Tooltip("Grace period after walking off an edge where a jump still counts.")]
+        [SerializeField] float coyoteTime = 0.12f;
 
         [Header("Look")]
         [SerializeField] Transform cameraPivot;
@@ -33,6 +40,7 @@ namespace MonsterChase.Player
         CharacterController cc;
         float pitch, verticalVelocity;
         bool crouchToggled;
+        float groundedFor;
 
         public bool IsCrouching { get; private set; }
         /// <summary>Sprinting under load, which is what costs you breath.</summary>
@@ -106,10 +114,9 @@ namespace MonsterChase.Player
         {
             if (kb == null) return;
 
-            // Held by default, so you cannot accidentally stay stuck under a bed while
-            // something walks towards you. Toggle is available for anyone who would
-            // rather not hold a key down for a whole hiding sequence.
-            bool crouchKey = kb.leftCtrlKey.isPressed || kb.cKey.isPressed;
+            // C only. Ctrl was also bound, which meant every sprint-crouch fumble and
+            // every Ctrl-key shortcut dropped the player into a crouch.
+            bool crouchKey = kb.cKey.isPressed;
             if (GameSettings.HoldToCrouch)
             {
                 IsCrouching = crouchKey;
@@ -117,13 +124,21 @@ namespace MonsterChase.Player
             }
             else
             {
-                if (kb.leftCtrlKey.wasPressedThisFrame || kb.cKey.wasPressedThisFrame)
-                    crouchToggled = !crouchToggled;
+                if (kb.cKey.wasPressedThisFrame) crouchToggled = !crouchToggled;
                 IsCrouching = crouchToggled;
             }
             float wanted = IsCrouching ? crouchHeight : standHeight;
             cc.height = Mathf.Lerp(cc.height, wanted, crouchLerp * Time.deltaTime);
             cc.center = new Vector3(0f, cc.height * 0.5f, 0f);
+
+            // The collider shrank but the camera never moved, so crouching looked like
+            // nothing happened. Drop the eye with the body.
+            if (cameraPivot != null)
+            {
+                float eye = standEyeHeight - (standHeight - cc.height);
+                var local = cameraPivot.localPosition;
+                cameraPivot.localPosition = new Vector3(local.x, eye, local.z);
+            }
 
             float x = (kb.dKey.isPressed ? 1f : 0f) - (kb.aKey.isPressed ? 1f : 0f);
             float z = (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f);
@@ -136,7 +151,17 @@ namespace MonsterChase.Player
                         : IsSprinting ? runSpeed
                         : walkSpeed;
 
+            groundedFor = cc.isGrounded ? 0f : groundedFor + Time.deltaTime;
             if (cc.isGrounded && verticalVelocity < 0f) verticalVelocity = -2f;
+
+            // Cannot jump out of a crouch: standing up first is the cost of being small.
+            bool canJump = groundedFor <= coyoteTime && !IsCrouching;
+            if (canJump && kb.spaceKey.wasPressedThisFrame)
+            {
+                verticalVelocity = Mathf.Sqrt(2f * jumpHeight * -gravity);
+                groundedFor = coyoteTime + 1f;
+            }
+
             verticalVelocity += gravity * Time.deltaTime;
 
             cc.Move((dir * speed + Vector3.up * verticalVelocity) * Time.deltaTime);
