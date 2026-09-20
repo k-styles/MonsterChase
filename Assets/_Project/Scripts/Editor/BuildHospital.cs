@@ -80,6 +80,8 @@ namespace MonsterChase.EditorTools
             var hud = BuildHud(monster);
             BuildPauseMenu();
             WirePlayerLife(player, hud);
+            BuildImpacts();
+            DressWithBlood(root, rooms);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -390,14 +392,67 @@ namespace MonsterChase.EditorTools
             var audio = player.AddComponent<AudioSource>();
             audio.playOnAwake = false; audio.spatialBlend = 0f;
 
+            var viewModel = BuildViewModel(camGo.transform);
+
             var gun = player.AddComponent<Gun>();
             var gso = new SerializedObject(gun);
             gso.FindProperty("sourceCamera").objectReferenceValue = cam;
             gso.FindProperty("fireAudio").objectReferenceValue = audio;
             gso.FindProperty("interactor").objectReferenceValue = interactor;
+            gso.FindProperty("viewModel").objectReferenceValue = viewModel;
             gso.ApplyModifiedPropertiesWithoutUndo();
 
             return player;
+        }
+
+        /// <summary>The gun you can see: model, muzzle point and flash, riding the camera.</summary>
+        static GunViewModel BuildViewModel(Transform camera)
+        {
+            var rig = new GameObject("ViewModel");
+            rig.transform.SetParent(camera, false);
+            rig.transform.localPosition = new Vector3(0.22f, -0.20f, 0.38f);
+            rig.transform.localRotation = Quaternion.Euler(0f, 186f, 0f);
+
+            const string gunPath = "Assets/Low Poly Guns/Models/Guns/pistol1/pistol1.fbx";
+            var fbx = AssetDatabase.LoadAssetAtPath<GameObject>(gunPath);
+            Transform model = rig.transform;
+
+            if (fbx != null)
+            {
+                var instance = (GameObject)PrefabUtility.InstantiatePrefab(fbx, rig.transform);
+                instance.name = "Pistol";
+                instance.transform.localPosition = Vector3.zero;
+                instance.transform.localRotation = Quaternion.identity;
+
+                // Measured, because a bought FBX is whatever scale its author saved it at.
+                float len = PresenceBuilder.MeasureHeight(instance);
+                if (len > 0.0001f) instance.transform.localScale = Vector3.one * (0.18f / len);
+
+                foreach (var c in instance.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
+                model = instance.transform;
+            }
+            else Debug.LogWarning("[Hospital] Gun pack missing; the gun is invisible.");
+
+            var muzzle = new GameObject("Muzzle");
+            muzzle.transform.SetParent(rig.transform, false);
+            muzzle.transform.localPosition = new Vector3(0f, 0.02f, 0.22f);
+
+            var flashGo = new GameObject("MuzzleFlash");
+            flashGo.transform.SetParent(muzzle.transform, false);
+            var flash = flashGo.AddComponent<Light>();
+            flash.type = LightType.Point;
+            flash.color = new Color(1f, 0.82f, 0.5f);
+            flash.intensity = 6f;
+            flash.range = 9f;
+            flash.enabled = false;
+
+            var vm = rig.AddComponent<GunViewModel>();
+            var so = new SerializedObject(vm);
+            so.FindProperty("model").objectReferenceValue = model;
+            so.FindProperty("muzzle").objectReferenceValue = muzzle.transform;
+            so.FindProperty("flash").objectReferenceValue = flash;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return vm;
         }
 
         static MonsterVitals BuildMonster(Vector3 position, Transform player, PatrolRoute route)
@@ -408,6 +463,13 @@ namespace MonsterChase.EditorTools
             // Tall enough to fill a 3m corridor and read as wrong at a distance,
             // short enough to clear the doorways it has to come through.
             PresenceBuilder.BuildMonsterBody(go.transform, 2.45f);
+
+            // Bullets need something to hit. The model's own colliders were stripped
+            // so they could not bake into the navmesh; this one is added after the bake.
+            var hitbox = go.AddComponent<CapsuleCollider>();
+            hitbox.height = 2.45f;
+            hitbox.radius = 0.45f;
+            hitbox.center = new Vector3(0f, 1.22f, 0f);
 
             var vitals = go.AddComponent<MonsterVitals>();
 
@@ -636,6 +698,85 @@ namespace MonsterChase.EditorTools
             so.FindProperty("menuButton").objectReferenceValue = toMenu;
             so.FindProperty("menuScene").stringValue = "Menu";
             so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>The effect spawner the gun talks to when a round lands in something.</summary>
+        static void BuildImpacts()
+        {
+            // Found by name, not by path: the pack keeps its one-shot variants in a
+            // subfolder and a hardcoded path silently produced dry hits.
+            var hit = FindPrefab("VFX_Splat_Directional_01_Floor_Once");
+            var pool = FindPrefab("VFX_Splat_01_Floor_Rot");
+
+            if (hit == null || pool == null)
+                Debug.LogWarning($"[Hospital] Blood VFX missing (hit={hit != null}, pool={pool != null}); hits will be dry.");
+            else
+                Debug.Log("[Hospital] Blood wired: directional spray on hit, pools on the floor.");
+
+            var go = new GameObject("Impacts");
+            var impacts = go.AddComponent<MonsterChase.Player.Impacts>();
+            var so = new SerializedObject(impacts);
+            so.FindProperty("bloodHit").objectReferenceValue = hit;
+            so.FindProperty("bloodPool").objectReferenceValue = pool;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        /// <summary>
+        /// Blood where something already happened: a pool under every body, and a
+        /// scatter of older ones along the corridor. The ward should read as somewhere
+        /// this has been going on for a while before you arrived.
+        /// </summary>
+        static void DressWithBlood(Transform root, List<Room> rooms)
+        {
+            var pool = FindPrefab("VFX_Splat_01_Floor_Rot");
+            var smear = FindPrefab("VFX_Splat_Directional_01_Floor");
+            if (pool == null && smear == null) return;
+
+            var holder = new GameObject("Blood").transform;
+            holder.SetParent(root, false);
+
+            // Under each body.
+            foreach (var anchor in Object.FindObjectsByType<AnchorSite>(FindObjectsSortMode.None))
+                Spawn(pool, holder, anchor.transform.position + Vector3.up * 0.02f, Random.Range(0f, 360f));
+
+            // Older marks round the loop, denser near the core doors where it herds you.
+            float rx = CoreHalfW + Corridor * 0.5f;
+            float rz = CoreHalfD + Corridor * 0.5f;
+            var rng = new System.Random(4);
+
+            for (int i = 0; i < 14; i++)
+            {
+                float t = (float)rng.NextDouble();
+                Vector3 p = i % 2 == 0
+                    ? new Vector3(Mathf.Lerp(-rx, rx, t), 0.02f, (i % 4 == 0 ? rz : -rz))
+                    : new Vector3((i % 4 == 1 ? rx : -rx), 0.02f, Mathf.Lerp(-rz, rz, t));
+
+                Spawn(i % 3 == 0 ? smear : pool, holder, p, (float)rng.NextDouble() * 360f);
+            }
+
+            // And a few in the rooms themselves, so cover is not clean either.
+            for (int i = 0; i < rooms.Count; i += 4)
+                Spawn(pool, holder, rooms[i].Centre + new Vector3(0.6f, 0.02f, 0.4f), i * 37f);
+        }
+
+        /// <summary>Exact-name prefab lookup anywhere under Assets.</summary>
+        static GameObject FindPrefab(string name)
+        {
+            foreach (var guid in AssetDatabase.FindAssets($"{name} t:Prefab"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (System.IO.Path.GetFileNameWithoutExtension(path) == name)
+                    return AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            }
+            return null;
+        }
+
+        static void Spawn(GameObject prefab, Transform parent, Vector3 at, float yaw)
+        {
+            if (prefab == null) return;
+            var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, parent);
+            go.transform.position = at;
+            go.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
         }
 
         static void RegisterScene()

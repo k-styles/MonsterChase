@@ -14,6 +14,7 @@ namespace MonsterChase.Player
     {
         [SerializeField] Camera sourceCamera;
         [SerializeField] Interactor interactor;
+        [SerializeField] GunViewModel viewModel;
         [SerializeField] float damage = 26f;
         [SerializeField] float shotsPerSecond = 4f;
         [SerializeField] float range = 90f;
@@ -38,6 +39,7 @@ namespace MonsterChase.Player
             Ammo = magazine;
             if (sourceCamera == null) sourceCamera = Camera.main;
             if (interactor == null) interactor = GetComponent<Interactor>();
+            if (viewModel == null) viewModel = GetComponentInChildren<GunViewModel>();
         }
 
         void Update()
@@ -81,13 +83,20 @@ namespace MonsterChase.Player
 
             Ammo--;
             if (fireAudio != null && fireClip != null) fireAudio.PlayOneShot(fireClip);
+            if (viewModel != null) viewModel.Fired();
 
             if (sourceCamera == null) return;
             var ray = new Ray(sourceCamera.transform.position, sourceCamera.transform.forward);
             if (!Physics.Raycast(ray, out var hit, range, hits, QueryTriggerInteraction.Ignore)) return;
 
             var vitals = hit.collider.GetComponentInParent<MonsterVitals>();
-            if (vitals != null) vitals.TakeDamage(damage);
+            if (vitals == null) return;
+
+            vitals.TakeDamage(damage);
+
+            // Blood only where there is something to bleed. A spray off a wall would
+            // read as a hit and teach the player the wrong thing about what connected.
+            if (Impacts.Instance != null) Impacts.Instance.Blood(hit.point, hit.normal);
         }
     }
 }
