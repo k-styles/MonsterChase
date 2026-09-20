@@ -50,9 +50,26 @@ namespace MonsterChase.EditorTools
 
             var root = new GameObject(ChaseRoot).transform;
 
-            // The pack's own camera would fight ours for MainCamera.
+            // The pack's demo scene ships its own first-person controller. Disabling
+            // only its camera left the body mesh rendering out in the field on a
+            // built-in shader, which is a magenta smear on the horizon.
+            int retired = 0;
             foreach (var cam in Object.FindObjectsByType<Camera>(FindObjectsSortMode.None))
-                if (!cam.transform.IsChildOf(root)) cam.gameObject.SetActive(false);
+                if (!cam.transform.IsChildOf(root))
+                {
+                    var top = cam.transform.root.gameObject;
+                    top.SetActive(false);
+                    retired++;
+                }
+
+            foreach (var go in Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None))
+            {
+                if (go.transform.IsChildOf(root) || !go.activeInHierarchy) continue;
+                var n = go.name.ToLowerInvariant();
+                if (n.Contains("fpscontroller") || n.Contains("firstperson") || n.Contains("playercapsule"))
+                { go.SetActive(false); retired++; }
+            }
+            if (retired > 0) Debug.Log($"[Flooded] Retired {retired} of the pack's own player objects.");
 
             float groundY = SampleGround(PlayCentre);
             var centre = new Vector3(PlayCentre.x, groundY, PlayCentre.z);

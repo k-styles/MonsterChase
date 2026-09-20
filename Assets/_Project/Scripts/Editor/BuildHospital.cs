@@ -466,6 +466,8 @@ namespace MonsterChase.EditorTools
             flash.range = 9f;
             flash.enabled = false;
 
+            BuildGunFx(rig.transform, muzzle.transform);
+
             var vm = rig.AddComponent<GunViewModel>();
             var so = new SerializedObject(vm);
             so.FindProperty("model").objectReferenceValue = model;
@@ -842,6 +844,13 @@ namespace MonsterChase.EditorTools
             {
                 var main = ps.main;
                 main.playOnAwake = false;
+
+                // The pack's container system has no material but is still set to
+                // Billboard, which draws magenta the moment it emits anything. It is
+                // meant to be invisible, so say so.
+                var r = ps.GetComponent<ParticleSystemRenderer>();
+                if (r != null && r.sharedMaterial == null)
+                    r.renderMode = ParticleSystemRenderMode.None;
             }
             return root;
         }
@@ -948,6 +957,112 @@ namespace MonsterChase.EditorTools
                 made++;
             }
             return made;
+        }
+
+        /// <summary>
+        /// Muzzle flash, smoke, brass, tracer and impact sparks, built from plain
+        /// particle systems so none of it depends on a pack being present.
+        /// </summary>
+        static MonsterChase.Player.GunFx BuildGunFx(Transform rig, Transform muzzle)
+        {
+            var mat = ParticleMaterial();
+
+            var flash = NewParticles("MuzzleFlash", muzzle, mat, new Color(1f, 0.85f, 0.45f),
+                0.22f, 0.05f, 0.6f, 6, 28f);
+            var smoke = NewParticles("MuzzleSmoke", muzzle, mat, new Color(0.7f, 0.7f, 0.72f, 0.5f),
+                0.11f, 0.5f, 1.1f, 5, 18f);
+
+            var brass = NewParticles("Brass", muzzle, mat, new Color(0.85f, 0.7f, 0.3f),
+                0.035f, 1.1f, 2.6f, 1, 12f);
+            brass.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+            var bm = brass.main; bm.gravityModifier = 1.6f;
+
+            // The tracer sits on the rig, not the muzzle: Shot() repositions and aims it
+            // down the real line of each bullet.
+            var tracer = NewParticles("Tracer", rig, mat, new Color(1f, 0.92f, 0.65f),
+                0.05f, 0.12f, 220f, 1, 0.4f);
+            var trr = tracer.GetComponent<ParticleSystemRenderer>();
+            trr.renderMode = ParticleSystemRenderMode.Stretch;
+            trr.lengthScale = 6f;
+            trr.velocityScale = 0.04f;
+
+            var impact = NewParticles("Impact", rig, mat, new Color(1f, 0.8f, 0.4f),
+                0.04f, 0.35f, 4.5f, 10, 55f);
+            var im = impact.main; im.gravityModifier = 1.1f;
+
+            var fx = rig.gameObject.AddComponent<MonsterChase.Player.GunFx>();
+            var so = new SerializedObject(fx);
+            so.FindProperty("flash").objectReferenceValue = flash;
+            so.FindProperty("smoke").objectReferenceValue = smoke;
+            so.FindProperty("brass").objectReferenceValue = brass;
+            so.FindProperty("tracer").objectReferenceValue = tracer;
+            so.FindProperty("impact").objectReferenceValue = impact;
+            so.FindProperty("muzzle").objectReferenceValue = muzzle;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return fx;
+        }
+
+        static ParticleSystem NewParticles(string name, Transform parent, Material mat, Color colour,
+                                           float size, float life, float speed, int burst, float cone)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+
+            var ps = go.AddComponent<ParticleSystem>();
+            var main = ps.main;
+            main.duration = 0.4f;
+            main.loop = false;
+            main.playOnAwake = false;
+            main.startLifetime = life;
+            main.startSpeed = speed;
+            main.startSize = size;
+            main.startColor = colour;
+            main.maxParticles = 64;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+            var emission = ps.emission;
+            emission.rateOverTime = 0f;
+            emission.SetBursts(new[] { new ParticleSystem.Burst(0f, (short)burst) });
+
+            var shape = ps.shape;
+            shape.shapeType = ParticleSystemShapeType.Cone;
+            shape.angle = cone;
+            shape.radius = 0.01f;
+
+            var r = go.GetComponent<ParticleSystemRenderer>();
+            r.sharedMaterial = mat;
+            r.renderMode = ParticleSystemRenderMode.Billboard;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            return ps;
+        }
+
+        /// <summary>An additive URP particle material, made once and reused.</summary>
+        static Material ParticleMaterial()
+        {
+            const string path = "Assets/_Project/Materials/M_GunSpark.mat";
+            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (existing != null) return existing;
+
+            var shader = Shader.Find("Universal Render Pipeline/Particles/Unlit")
+                      ?? Shader.Find("Universal Render Pipeline/Unlit");
+            var m = new Material(shader) { name = "M_GunSpark" };
+            if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);
+            if (m.HasProperty("_Blend")) m.SetFloat("_Blend", 1f);
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", Color.white);
+
+            // Untextured particles render as hard squares; this is a soft round dot.
+            var dot = MaterialConverter.SoftDot();
+            if (dot != null)
+            {
+                if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", dot);
+                if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", dot);
+            }
+            m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+
+            System.IO.Directory.CreateDirectory("Assets/_Project/Materials");
+            AssetDatabase.CreateAsset(m, path);
+            return AssetDatabase.LoadAssetAtPath<Material>(path);
         }
 
         static void RegisterScene()

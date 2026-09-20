@@ -15,6 +15,7 @@ namespace MonsterChase.Player
         [SerializeField] Camera sourceCamera;
         [SerializeField] Interactor interactor;
         [SerializeField] GunViewModel viewModel;
+        [SerializeField] GunFx fx;
         [SerializeField] float damage = 26f;
         [SerializeField] float shotsPerSecond = 4f;
         [SerializeField] float range = 90f;
@@ -60,6 +61,7 @@ namespace MonsterChase.Player
             if (sourceCamera == null) sourceCamera = Camera.main;
             if (interactor == null) interactor = GetComponent<Interactor>();
             if (viewModel == null) viewModel = GetComponentInChildren<GunViewModel>();
+            if (fx == null) fx = GetComponentInChildren<GunFx>();
         }
 
         void Update()
@@ -148,8 +150,19 @@ namespace MonsterChase.Player
             if (viewModel != null) viewModel.Fired();
 
             if (sourceCamera == null) return;
+
             var ray = new Ray(sourceCamera.transform.position, sourceCamera.transform.forward);
-            if (!Physics.Raycast(ray, out var hit, range, hits, QueryTriggerInteraction.Ignore)) return;
+            bool connected = Physics.Raycast(ray, out var hit, range, hits, QueryTriggerInteraction.Ignore);
+
+            // The tracer starts at the barrel, not the camera, or every shot appears to
+            // come out of the player's forehead.
+            var from = fx != null ? fx.Muzzle.position
+                     : viewModel != null ? viewModel.Muzzle.position
+                     : ray.origin;
+            var to = connected ? hit.point : ray.origin + ray.direction * range;
+            if (fx != null) fx.Shot(from, to, connected, connected ? hit.normal : -ray.direction);
+
+            if (!connected) return;
 
             var vitals = hit.collider.GetComponentInParent<MonsterVitals>();
             if (vitals == null) return;
