@@ -402,14 +402,14 @@ namespace MonsterChase.EditorTools
 
         static MonsterVitals BuildMonster(Vector3 position, Transform player, PatrolRoute route)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            go.name = "Monster";
-            go.transform.position = position + Vector3.up * 1.25f;
-            go.transform.localScale = new Vector3(1.0f, 1.25f, 1.0f);
-            go.GetComponent<MeshRenderer>().sharedMaterial = HospitalKit.Mat("Monster", new Color(0.52f, 0.14f, 0.14f));
+            var go = new GameObject("Monster");
+            go.transform.position = position;
+
+            // Tall enough to fill a 3m corridor and read as wrong at a distance,
+            // short enough to clear the doorways it has to come through.
+            PresenceBuilder.BuildMonsterBody(go.transform, 2.45f);
 
             var vitals = go.AddComponent<MonsterVitals>();
-            go.AddComponent<MonsterStaggerTell>();
 
             var agent = go.AddComponent<NavMeshAgent>();
             agent.radius = 0.4f;
@@ -419,6 +419,12 @@ namespace MonsterChase.EditorTools
             agent.acceleration = 30f;
             agent.stoppingDistance = 0.3f;
             agent.autoBraking = false;
+
+            var anim = go.AddComponent<MonsterAnimation>();
+            var anso = new SerializedObject(anim);
+            anso.FindProperty("animator").objectReferenceValue = go.GetComponentInChildren<Animator>();
+            anso.FindProperty("agent").objectReferenceValue = agent;
+            anso.ApplyModifiedPropertiesWithoutUndo();
 
             var ai = go.AddComponent<MonsterAI>();
             var aiso = new SerializedObject(ai);
@@ -508,16 +514,18 @@ namespace MonsterChase.EditorTools
                 var room = rooms[pick[i] % rooms.Count];
                 var pos = room.Centre + new Vector3(0f, 0.18f, 0f);
 
-                var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                body.name = $"Anchor_{i:D2}";
+                var body = new GameObject($"Anchor_{i:D2}");
                 body.transform.SetParent(holder, false);
                 body.transform.position = pos;
-                body.transform.rotation = Quaternion.Euler(90f, i * 47f, 0f);
-                body.transform.localScale = new Vector3(0.5f, 0.85f, 0.5f);
-                body.GetComponent<MeshRenderer>().sharedMaterial = bodyMat;
 
-                var col = body.GetComponent<Collider>();
-                if (col != null) col.isTrigger = true;
+                PresenceBuilder.BuildCorpse(body.transform, i);
+
+                // The interact ray needs something to hit, and the corpse's own
+                // colliders were stripped so they cannot bake into the navmesh.
+                var col = body.AddComponent<BoxCollider>();
+                col.isTrigger = true;
+                col.center = new Vector3(0f, 0.25f, 0f);
+                col.size = new Vector3(1.8f, 0.7f, 1.0f);
 
                 var lightGo = new GameObject("FireLight");
                 lightGo.transform.SetParent(body.transform, false);
