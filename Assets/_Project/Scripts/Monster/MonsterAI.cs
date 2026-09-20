@@ -36,10 +36,11 @@ namespace MonsterChase.Monster
         [SerializeField] float loseInterestSeconds = 4f;
 
         [Header("Speeds")]
-        [SerializeField] float patrolSpeed = 2.0f;
-        [SerializeField] float investigateSpeed = 3.0f;
-        [Tooltip("Your sprint is 5.6. This is deliberately above it.")]
-        [SerializeField] float chaseSpeed = 5.9f;
+        [Tooltip("Unhurried, so you can hear it coming before you see it.")]
+        [SerializeField] float patrolSpeed = 2.6f;
+        [SerializeField] float investigateSpeed = 4.2f;
+        [Tooltip("Your sprint is 5.6. Well above it: running is not an escape, breaking line of sight is.")]
+        [SerializeField] float chaseSpeed = 7.2f;
 
         [Header("Searching")]
         [SerializeField] float searchSeconds = 22f;
@@ -49,7 +50,7 @@ namespace MonsterChase.Monster
         [SerializeField] float catchDistance = 1.7f;
 
         [Header("What each burnt anchor does to it")]
-        [SerializeField] float chaseSpeedPerAnchor = 0.16f;
+        [SerializeField] float chaseSpeedPerAnchor = 0.25f;
         [SerializeField] float searchSecondsPerAnchor = 3f;
 
         NavMeshAgent agent;

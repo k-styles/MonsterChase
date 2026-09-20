@@ -304,6 +304,85 @@ namespace MonsterChase.EditorTools
             return null;
         }
 
+        /// <summary>
+        /// The Flooded Grounds pack ships custom shaders written for the Built-in
+        /// pipeline: PBR_Water, PBR_TopBlend and Triplanar_BumpSpec. Under URP they
+        /// render magenta -- the water, the rocks, the bridge, the barn, the bushes.
+        ///
+        /// They are the reason every "is the shader supported?" scan came back clean:
+        /// isSupported reports true for them, they simply do not draw. Nothing detects
+        /// that from data, which is why this took a screenshot to find.
+        ///
+        /// Converting costs the pack's parallax water and its moss top-blending. URP has
+        /// no equivalent, so the honest trade is flat surfaces that you can see over
+        /// fancy surfaces that are solid pink.
+        /// </summary>
+        [MenuItem("MonsterChase/Repair Flooded Grounds Shaders")]
+        public static void RepairPackShaders()
+        {
+            var lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (lit == null) { Debug.LogError("[Pack] URP/Lit missing."); return; }
+
+            int done = 0;
+            foreach (var guid in AssetDatabase.FindAssets("t:Material"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (m == null || m.shader == null) continue;
+
+                var n = m.shader.name;
+                if (!n.StartsWith("Flooded_Grounds/")) continue;
+                if (n.Contains("Skybox")) continue;          // the sky renders correctly
+
+                bool isWater = n.Contains("Water");
+
+                var main = m.HasProperty("_MainTex") ? m.GetTexture("_MainTex") : null;
+                var bump = m.HasProperty("_BumpMap") ? m.GetTexture("_BumpMap")
+                         : m.HasProperty("_BumpMap1") ? m.GetTexture("_BumpMap1") : null;
+                var tint = m.HasProperty("_Color") ? m.GetColor("_Color") : Color.white;
+
+                m.shader = lit;
+
+                if (main != null && m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", main);
+                if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", isWater
+                    ? new Color(0.22f, 0.32f, 0.33f, 0.80f)
+                    : new Color(tint.r, tint.g, tint.b, 1f));
+
+                if (bump != null && m.HasProperty("_BumpMap"))
+                {
+                    var bp = AssetDatabase.GetAssetPath(bump);
+                    if (AssetImporter.GetAtPath(bp) is TextureImporter bti
+                        && bti.textureType != TextureImporterType.NormalMap)
+                    {
+                        bti.textureType = TextureImporterType.NormalMap;
+                        bti.SaveAndReimport();
+                    }
+                    m.SetTexture("_BumpMap", bump);
+                    m.EnableKeyword("_NORMALMAP");
+                }
+
+                if (isWater)
+                {
+                    // Transparent and glossy, so it still reads as standing water.
+                    if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);
+                    if (m.HasProperty("_Blend")) m.SetFloat("_Blend", 0f);
+                    if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.92f);
+                    if (m.HasProperty("_ZWrite")) m.SetFloat("_ZWrite", 0f);
+                    m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                    m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+                }
+                else if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.12f);
+
+                EditorUtility.SetDirty(m);
+                done++;
+                Debug.Log($"[Pack] {m.name}: {n} -> URP/Lit{(isWater ? " (transparent water)" : "")}");
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log($"[Pack] {done} Flooded Grounds materials converted.");
+        }
+
         [MenuItem("MonsterChase/Repair Particle Materials")]
         public static void RepairParticles()
         {
@@ -414,6 +493,7 @@ namespace MonsterChase.EditorTools
             RepairParticles();
             RepairTrees();
             RepairModelTextures();
+            RepairPackShaders();
             Debug.Log($"[Convert] {converted} materials moved to URP/Lit, {skipped} left alone. " +
                       (touched.Count > 0 ? "e.g. " + string.Join(", ", touched) : ""));
         }

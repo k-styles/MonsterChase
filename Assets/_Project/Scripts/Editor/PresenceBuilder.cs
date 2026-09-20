@@ -48,6 +48,16 @@ namespace MonsterChase.EditorTools
                 Debug.Log($"[MonsterChase] Demon measured {measured:F2}m; scaled to {targetHeight}m.");
             }
 
+            // The pivot is not at the feet, so after scaling the model sits above or
+            // below its own transform -- which reads as hovering while it walks. Drop
+            // it by however far its lowest rendered point is from the origin.
+            float footGap = LowestPoint(body) - parent.position.y;
+            if (Mathf.Abs(footGap) > 0.001f)
+            {
+                body.transform.localPosition -= new Vector3(0f, footGap, 0f);
+                Debug.Log($"[MonsterChase] Demon feet were {footGap:F2}m off the ground; seated.");
+            }
+
             var animator = body.GetComponentInChildren<Animator>();
             if (animator != null)
             {
@@ -140,6 +150,16 @@ namespace MonsterChase.EditorTools
             copy.globalIlluminationFlags = MaterialGlobalIlluminationFlags.EmissiveIsBlack;
             AssetDatabase.CreateAsset(copy, path);
             return AssetDatabase.LoadAssetAtPath<Material>(path);
+        }
+
+        /// <summary>World-space y of the lowest rendered point.</summary>
+        public static float LowestPoint(GameObject go)
+        {
+            var renderers = go.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0) return go.transform.position.y;
+            float min = renderers[0].bounds.min.y;
+            for (int i = 1; i < renderers.Length; i++) min = Mathf.Min(min, renderers[i].bounds.min.y);
+            return min;
         }
 
         public static float MeasureHeight(GameObject go)

@@ -298,9 +298,13 @@ namespace MonsterChase.EditorTools
             so.FindProperty("ai").objectReferenceValue = monster.GetComponent<MonsterAI>();
             so.FindProperty("mouth").objectReferenceValue = mouth;
             so.FindProperty("player").objectReferenceValue = player;
-            BuildHospital.FillClips(so.FindProperty("roars"), "sfx_roar_1", "sfx_roar_2", "sfx_roar_3");
-            BuildHospital.FillClips(so.FindProperty("snarls"), "sfx_snarl_1", "sfx_snarl_2", "sfx_snarl_3");
-            BuildHospital.FillClips(so.FindProperty("noticeSounds"), "cre_screech_1", "cre_screech_2");
+            // Kartik's mapping:
+            //   roar    -> the moment it first sees you and commits
+            //   screech -> while hunting, searching and patrolling
+            //   bite + growl -> the catch, handled by PlayerLife
+            BuildHospital.FillClips(so.FindProperty("noticeSounds"), "cre_roar_reveal");
+            BuildHospital.FillClips(so.FindProperty("roars"), "cre_screech_1", "cre_screech_2");
+            BuildHospital.FillClips(so.FindProperty("snarls"), "cre_screech_1", "cre_screech_2");
             so.ApplyModifiedPropertiesWithoutUndo();
 
             // Always-on growl: the only dependable way to tell where it is while you are

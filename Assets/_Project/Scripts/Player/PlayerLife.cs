@@ -18,6 +18,15 @@ namespace MonsterChase.Player
         [SerializeField] Text deathText;
         [SerializeField] float holdSeconds = 2.6f;
 
+        [Header("The catch")]
+        [SerializeField] AudioSource deathAudio;
+        [SerializeField] AudioClip biteClip;
+        [Tooltip("Plays over the blood, a beat after the bite.")]
+        [SerializeField] AudioClip afterClip;
+        [SerializeField] float afterDelay = 0.8f;
+
+        bool playedAfter;
+
         bool dying;
         float timer;
 
@@ -41,6 +50,8 @@ namespace MonsterChase.Player
                 deathText.enabled = true;
                 deathText.text = "it found you";
             }
+
+            if (deathAudio != null && biteClip != null) deathAudio.PlayOneShot(biteClip);
         }
 
         void Update()
@@ -48,6 +59,13 @@ namespace MonsterChase.Player
             if (!dying) return;
 
             timer += Time.unscaledDeltaTime;
+
+            if (!playedAfter && timer >= afterDelay)
+            {
+                playedAfter = true;
+                if (deathAudio != null && afterClip != null) deathAudio.PlayOneShot(afterClip, 0.9f);
+            }
+
             if (bloodOverlay != null)
                 bloodOverlay.color = new Color(0.35f, 0.02f, 0.02f, Mathf.Clamp01(timer / holdSeconds));
 

@@ -482,25 +482,27 @@ namespace MonsterChase.EditorTools
             var go = new GameObject("Monster");
             go.transform.position = position;
 
-            // Tall enough to fill a 3m corridor and read as wrong at a distance,
-            // short enough to clear the doorways it has to come through.
-            PresenceBuilder.BuildMonsterBody(go.transform, 2.45f);
+            // Big. Out in the village there is no ceiling to duck under, and the thing
+            // needs to read as wrong from across the map.
+            const float monsterHeight = 3.6f;
+            PresenceBuilder.BuildMonsterBody(go.transform, monsterHeight);
 
             // Bullets need something to hit. The model's own colliders were stripped
             // so they could not bake into the navmesh; this one is added after the bake.
             var hitbox = go.AddComponent<CapsuleCollider>();
-            hitbox.height = 2.45f;
-            hitbox.radius = 0.45f;
-            hitbox.center = new Vector3(0f, 1.22f, 0f);
+            hitbox.height = monsterHeight;
+            hitbox.radius = 0.55f;
+            hitbox.center = new Vector3(0f, monsterHeight * 0.5f, 0f);
 
             var vitals = go.AddComponent<MonsterVitals>();
 
             var agent = go.AddComponent<NavMeshAgent>();
-            agent.radius = 0.4f;
-            agent.height = 2.4f;
-            agent.speed = 2f;
-            agent.angularSpeed = 700f;
-            agent.acceleration = 30f;
+            agent.baseOffset = 0f;      // the model is seated on the pivot, not floating
+            agent.radius = 0.55f;
+            agent.height = monsterHeight;
+            agent.speed = 2.6f;
+            agent.angularSpeed = 900f;
+            agent.acceleration = 45f;
             agent.stoppingDistance = 0.3f;
             agent.autoBraking = false;
 
@@ -510,38 +512,11 @@ namespace MonsterChase.EditorTools
             anso.FindProperty("agent").objectReferenceValue = agent;
             anso.ApplyModifiedPropertiesWithoutUndo();
 
-            var mouth = go.AddComponent<AudioSource>();
-            mouth.playOnAwake = false;
-            mouth.spatialBlend = 1f;
-            mouth.rolloffMode = AudioRolloffMode.Linear;
-            mouth.minDistance = 4f;
-            mouth.maxDistance = 55f;
-
             var ai = go.AddComponent<MonsterAI>();
             var aiso = new SerializedObject(ai);
             aiso.FindProperty("player").objectReferenceValue = player;
             aiso.FindProperty("route").objectReferenceValue = route;
             aiso.ApplyModifiedPropertiesWithoutUndo();
-
-            var voice = go.AddComponent<CreatureVoice>();
-            var vso = new SerializedObject(voice);
-            vso.FindProperty("ai").objectReferenceValue = ai;
-            vso.FindProperty("mouth").objectReferenceValue = mouth;
-            vso.FindProperty("player").objectReferenceValue = player;
-            FillClips(vso.FindProperty("roars"), "sfx_roar_1", "sfx_roar_2", "sfx_roar_3");
-            FillClips(vso.FindProperty("snarls"), "sfx_snarl_1", "sfx_snarl_2", "sfx_snarl_3");
-            FillClips(vso.FindProperty("noticeSounds"), "cre_screech_1", "cre_screech_2");
-            vso.ApplyModifiedPropertiesWithoutUndo();
-
-            var constant = go.AddComponent<AudioSource>();
-            constant.clip = FindClip("cre_growl_constant");
-            constant.loop = true;
-            constant.playOnAwake = true;
-            constant.spatialBlend = 1f;
-            constant.rolloffMode = AudioRolloffMode.Linear;
-            constant.minDistance = 4f;
-            constant.maxDistance = 34f;
-            constant.volume = 0.6f;
 
             return vitals;
         }
@@ -604,10 +579,17 @@ namespace MonsterChase.EditorTools
             UiKit.Place(died.rectTransform, 0.2f, 0.8f, 0.45f, 0.55f);
             died.transform.SetAsLastSibling();
 
+            var deathAudio = player.AddComponent<AudioSource>();
+            deathAudio.playOnAwake = false;
+            deathAudio.spatialBlend = 0f;
+
             var life = player.AddComponent<PlayerLife>();
             var so = new SerializedObject(life);
             so.FindProperty("bloodOverlay").objectReferenceValue = blood;
             so.FindProperty("deathText").objectReferenceValue = died;
+            so.FindProperty("deathAudio").objectReferenceValue = deathAudio;
+            so.FindProperty("biteClip").objectReferenceValue = FindClip("cre_bite");
+            so.FindProperty("afterClip").objectReferenceValue = FindClip("cre_growl_afterkill");
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
