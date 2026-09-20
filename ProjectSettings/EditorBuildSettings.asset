@@ -9,6 +9,9 @@ EditorBuildSettings:
     path: Assets/_Project/Scenes/Menu.unity
     guid: 76c2513707632458393348daf1c4825d
   - enabled: 1
+    path: Assets/_Project/Scenes/Hospital.unity
+    guid: 8ee75823cbc4a45f98d5730c2ddf7c56
+  - enabled: 1
     path: Assets/_Project/Scenes/Testbed.unity
     guid: 6b34fe177aed14db88c0f9666c41c45f
   m_configObjects:
