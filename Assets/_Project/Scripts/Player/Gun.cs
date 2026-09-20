@@ -26,6 +26,10 @@ namespace MonsterChase.Player
         [SerializeField] float reloadSeconds = 1.8f;
         [SerializeField] LayerMask hits = ~0;
 
+        [Header("Noise")]
+        [Tooltip("How far a shot carries. The monster comes to look, and walks the spot once.")]
+        [SerializeField] float shotNoiseRadius = 70f;
+
         [Header("Feel")]
         [SerializeField] AudioSource fireAudio;
         [Tooltip("Picked at random per shot so a magazine does not sound like a metronome.")]
@@ -160,6 +164,9 @@ namespace MonsterChase.Player
 
             Ammo--;
             PlayShot();
+
+            // Firing is the loudest thing in the game. It should cost you.
+            MonsterChase.Core.GameEvents.RaiseNoise(transform.position, shotNoiseRadius);
             if (viewModel != null) viewModel.Fired();
 
             if (sourceCamera == null) return;

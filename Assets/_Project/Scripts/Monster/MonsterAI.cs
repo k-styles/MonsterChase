@@ -28,8 +28,9 @@ namespace MonsterChase.Monster
         [SerializeField] PatrolRoute route;
 
         [Header("Senses")]
-        [SerializeField] float sightRange = 30f;
-        [SerializeField, Range(0f, 180f)] float sightHalfAngle = 70f;
+        [Tooltip("It can see the length of the village. Cover is what saves you, not distance.")]
+        [SerializeField] float sightRange = 85f;
+        [SerializeField, Range(0f, 180f)] float sightHalfAngle = 85f;
         [SerializeField] LayerMask sightBlockers = ~0;
         [Tooltip("Unbroken seconds of sight before it commits.")]
         [SerializeField] float sightToChase = 0.3f;
@@ -55,6 +56,7 @@ namespace MonsterChase.Monster
 
         NavMeshAgent agent;
         MonsterVitals vitals;
+        bool sweptPast;
         State state = State.Patrol;
         float stateTimer, sightTimer, lostTimer;
         Vector3 lastKnown;
@@ -148,6 +150,21 @@ namespace MonsterChase.Monster
             EnterInvestigate(at);
         }
 
+        /// <summary>
+        /// Walks through where the noise came from and keeps going a little past it,
+        /// rather than stopping dead on the spot. A shot pulls it across your position,
+        /// which is the point of the noise mattering.
+        /// </summary>
+        void SweepPast()
+        {
+            if (!hasLastKnown) return;
+
+            var through = lastKnown + (lastKnown - transform.position).normalized * 6f;
+            if (NavMesh.SamplePosition(through, out var hit, 8f, NavMesh.AllAreas))
+                agent.SetDestination(hit.position);
+            sweptPast = true;
+        }
+
         bool TryCatch()
         {
             if (player == null || HidingSpot.PlayerHidden) return false;
@@ -174,8 +191,13 @@ namespace MonsterChase.Monster
             if (canSee && sightTimer >= sightToChase) { EnterChase(); return; }
 
             stateTimer -= Time.deltaTime;
-            if (stateTimer <= 0f || (!agent.pathPending && agent.remainingDistance < 1f))
-                EnterSearch(agent.destination);
+
+            bool arrived = !agent.pathPending && agent.remainingDistance < 1f;
+
+            // Arriving is not the end of it: walk through and a few metres past first.
+            if (arrived && !sweptPast) { SweepPast(); return; }
+
+            if (stateTimer <= 0f || (arrived && sweptPast)) EnterSearch(agent.destination);
         }
 
         void TickChase(bool canSee)
@@ -228,10 +250,16 @@ namespace MonsterChase.Monster
         public void EnterInvestigate(Vector3 point)
         {
             if (state == State.Chase) return;
+
+            lastKnown = point;
+            hasLastKnown = true;
+            sweptPast = false;
+
             if (NavMesh.SamplePosition(point, out var hit, 5f, NavMesh.AllAreas))
                 agent.SetDestination(hit.position);
+
             state = State.Investigate;
-            stateTimer = 8f;
+            stateTimer = 14f;
         }
 
         void EnterChase()

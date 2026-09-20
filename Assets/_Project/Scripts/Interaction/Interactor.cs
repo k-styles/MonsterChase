@@ -4,25 +4,32 @@ using UnityEngine.InputSystem;
 namespace MonsterChase.Interaction
 {
     /// <summary>
-    /// Looks for something usable under the crosshair and acts on it.
+    /// Looks for something usable near the crosshair and acts on it.
     ///
-    /// Both the left mouse button and E work. The gun asks <see cref="HasTarget"/>
-    /// before firing, so clicking a door opens it instead of putting a round through
-    /// it -- the same button does the sensible thing in each context, and you are
-    /// never left wondering why a click did nothing.
+    /// A plain Raycast was wrong for this. Bodies lie on the ground and ammo boxes are
+    /// 18cm tall, so the terrain is almost always the closest hit and the interactable
+    /// behind it never gets seen -- which is why nothing could be picked up or burnt.
+    ///
+    /// Instead: sweep a sphere so aim does not have to be pixel-perfect, take every
+    /// hit, and pick the nearest interactable. Something solid only blocks it if it is
+    /// meaningfully in front, so the floor a body is lying on does not count as cover.
     /// </summary>
     public class Interactor : MonoBehaviour
     {
         [SerializeField] Camera sourceCamera;
-        [SerializeField] float range = 3.2f;
+        [SerializeField] float range = 3.5f;
+        [Tooltip("Sweep radius. Bigger is more forgiving to aim.")]
+        [SerializeField] float aimRadius = 0.3f;
+        [Tooltip("How far in front of the target something must be to actually block it.")]
+        [SerializeField] float blockingMargin = 0.5f;
         [SerializeField] LayerMask mask = ~0;
 
-        /// <summary>Something usable is under the crosshair right now.</summary>
         public bool HasTarget => current != null && current.CanInteract;
         public IInteractable Current => current;
         public string Prompt { get; private set; } = "";
 
         IInteractable current;
+        readonly RaycastHit[] hits = new RaycastHit[24];
 
         void Awake()
         {
@@ -37,10 +44,10 @@ namespace MonsterChase.Interaction
 
             Prompt = current.CanInteract ? current.Prompt : "";
             if (!current.CanInteract) return;
+            if (Cursor.lockState != CursorLockMode.Locked) return;
 
             var kb = Keyboard.current;
             var mouse = Mouse.current;
-            if (Cursor.lockState != CursorLockMode.Locked) return;
 
             if (current.IsHold)
             {
@@ -61,10 +68,41 @@ namespace MonsterChase.Interaction
             current = null;
             if (sourceCamera == null) return;
 
-            var ray = new Ray(sourceCamera.transform.position, sourceCamera.transform.forward);
-            if (!Physics.Raycast(ray, out var hit, range, mask, QueryTriggerInteraction.Collide)) return;
+            var ray = sourceCamera.ScreenPointToRay(
+                new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f));
 
-            current = hit.collider.GetComponentInParent<IInteractable>();
+            int count = Physics.SphereCastNonAlloc(ray, aimRadius, hits, range, mask,
+                                                   QueryTriggerInteraction.Collide);
+            if (count == 0) return;
+
+            IInteractable best = null;
+            float bestDistance = float.MaxValue;
+            float nearestSolid = float.MaxValue;
+
+            for (int i = 0; i < count; i++)
+            {
+                var hit = hits[i];
+                // SphereCast reports distance 0 when it starts overlapping; treat those
+                // as touching rather than discarding them.
+                float d = hit.distance <= 0.0001f ? 0f : hit.distance;
+
+                var candidate = hit.collider.GetComponentInParent<IInteractable>();
+                if (candidate != null && candidate.CanInteract)
+                {
+                    if (d < bestDistance) { bestDistance = d; best = candidate; }
+                }
+                else if (!hit.collider.isTrigger && d < nearestSolid)
+                {
+                    nearestSolid = d;
+                }
+            }
+
+            if (best == null) return;
+
+            // A wall between you and it still blocks; the ground it rests on does not.
+            if (nearestSolid + blockingMargin < bestDistance) return;
+
+            current = best;
         }
     }
 }

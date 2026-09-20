@@ -936,7 +936,14 @@ namespace MonsterChase.EditorTools
             {
                 var box = HospitalKit.Box(holder, $"Ammo_{made:D2}", at + Vector3.up * 0.09f,
                                           new Vector3(0.34f, 0.18f, 0.22f), mat);
-                box.GetComponent<Collider>().isTrigger = true;
+
+                // The mesh is 18cm tall, which is far too small to aim at with the
+                // ground right behind it. The trigger is deliberately much larger.
+                Object.DestroyImmediate(box.GetComponent<Collider>());
+                var reach = box.AddComponent<BoxCollider>();
+                reach.isTrigger = true;
+                reach.size = new Vector3(2.6f, 5f, 3.6f);
+                reach.center = new Vector3(0f, 2f, 0f);
 
                 var lid = HospitalKit.Box(box.transform, "Lid", at + Vector3.up * 0.19f,
                                           new Vector3(0.36f, 0.03f, 0.24f),

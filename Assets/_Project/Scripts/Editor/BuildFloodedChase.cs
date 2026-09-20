@@ -208,10 +208,12 @@ namespace MonsterChase.EditorTools
                 var col = body.AddComponent<BoxCollider>();
                 col.isTrigger = true;
                 var bounds = CorpseBounds(corpse, body.transform);
-                col.center = bounds.center;
-                col.size = new Vector3(Mathf.Max(1.2f, bounds.size.x),
-                                       Mathf.Max(0.9f, bounds.size.y),
-                                       Mathf.Max(1.2f, bounds.size.z));
+                col.size = new Vector3(Mathf.Max(1.4f, bounds.size.x),
+                                       1.3f,
+                                       Mathf.Max(1.4f, bounds.size.z));
+                // Sat on top of the ground rather than centred on the body, which left
+                // it half buried and made the terrain the closer hit.
+                col.center = new Vector3(bounds.center.x, 0.55f, bounds.center.z);
 
                 var lightGo = new GameObject("FireLight");
                 lightGo.transform.SetParent(body.transform, false);
