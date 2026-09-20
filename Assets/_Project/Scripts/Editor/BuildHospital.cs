@@ -400,6 +400,15 @@ namespace MonsterChase.EditorTools
             gso.FindProperty("fireAudio").objectReferenceValue = audio;
             gso.FindProperty("interactor").objectReferenceValue = interactor;
             gso.FindProperty("viewModel").objectReferenceValue = viewModel;
+
+            FillClips(gso.FindProperty("fireClips"),
+                "handgun_gunshot_01", "handgun_gunshot_02", "handgun_gunshot_03");
+            FillClips(gso.FindProperty("tailClips"),
+                "handgun_tail_01", "handgun_tail_02");
+            FillClips(gso.FindProperty("reloadClips"),
+                "01_slide_lock_handgun_reload_1", "02_drop_the_mag_handgun_reload_1",
+                "03_insert_the_mag_handgun_reload_1", "04_slide_release_handgun_reload_1");
+
             gso.ApplyModifiedPropertiesWithoutUndo();
 
             return player;
@@ -411,7 +420,9 @@ namespace MonsterChase.EditorTools
             var rig = new GameObject("ViewModel");
             rig.transform.SetParent(camera, false);
             rig.transform.localPosition = new Vector3(0.22f, -0.20f, 0.38f);
-            rig.transform.localRotation = Quaternion.Euler(0f, 186f, 0f);
+            // Measured: the pistol's barrel runs along +Z, which is already camera
+            // forward. The 186 degrees that used to be here pointed it at the player.
+            rig.transform.localRotation = Quaternion.identity;
 
             const string gunPath = "Assets/Low Poly Guns/Models/Guns/pistol1/pistol1.fbx";
             var fbx = AssetDatabase.LoadAssetAtPath<GameObject>(gunPath);
@@ -759,6 +770,32 @@ namespace MonsterChase.EditorTools
                 Spawn(pool, holder, rooms[i].Centre + new Vector3(0.6f, 0.02f, 0.4f), i * 37f);
         }
 
+        /// <summary>Fills a serialized AudioClip array by clip name, skipping any that are missing.</summary>
+        static void FillClips(SerializedProperty array, params string[] names)
+        {
+            var found = new List<Object>();
+            foreach (var n in names)
+            {
+                var clip = FindClip(n);
+                if (clip != null) found.Add(clip);
+                else Debug.LogWarning($"[Hospital] Audio clip '{n}' not found.");
+            }
+            array.arraySize = found.Count;
+            for (int i = 0; i < found.Count; i++)
+                array.GetArrayElementAtIndex(i).objectReferenceValue = found[i];
+        }
+
+        static AudioClip FindClip(string name)
+        {
+            foreach (var guid in AssetDatabase.FindAssets($"{name} t:AudioClip"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (System.IO.Path.GetFileNameWithoutExtension(path) == name)
+                    return AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+            }
+            return null;
+        }
+
         /// <summary>Exact-name prefab lookup anywhere under Assets.</summary>
         static GameObject FindPrefab(string name)
         {
@@ -777,6 +814,31 @@ namespace MonsterChase.EditorTools
             var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, parent);
             go.transform.position = at;
             go.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+            MakePermanent(go);
+        }
+
+        /// <summary>
+        /// These prefabs are one-shot effects, not decals. Their splat system loops on a
+        /// two second cycle, so left alone a pool of blood blinks on and off forever.
+        ///
+        /// Emit once, then live effectively forever: the splat is drawn a single time
+        /// and simply stays there, which is what a stain on the floor does.
+        /// </summary>
+        static void MakePermanent(GameObject go)
+        {
+            foreach (var ps in go.GetComponentsInChildren<ParticleSystem>(true))
+            {
+                var main = ps.main;
+                main.loop = false;
+                main.playOnAwake = true;
+                main.startLifetime = 100000f;
+                main.stopAction = ParticleSystemStopAction.None;
+
+                // A looping emission would keep adding splats on top of each other.
+                var emission = ps.emission;
+                emission.rateOverTime = 0f;
+                emission.rateOverDistance = 0f;
+            }
         }
 
         static void RegisterScene()

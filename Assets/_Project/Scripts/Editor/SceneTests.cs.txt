@@ -1,0 +1,76 @@
+var scene = UnityEditor.SceneManagement.EditorSceneManager.OpenScene(
+    "Assets/_Project/Scenes/Hospital.unity", UnityEditor.SceneManagement.OpenSceneMode.Single);
+
+int fail = 0;
+void Check(string what, bool ok, string detail = "") {
+    if (!ok) fail++;
+    UnityEngine.Debug.Log($"[T] {(ok ? "PASS" : "FAIL")}  {what}{(detail != "" ? "  -- " + detail : "")}");
+}
+
+// --- rendering ---
+int badMat = 0; string badExample = "";
+foreach (var r in UnityEngine.Object.FindObjectsByType<UnityEngine.Renderer>(UnityEngine.FindObjectsSortMode.None))
+{
+    // A particle renderer in None mode draws nothing and legitimately has no material.
+    var pr = r as UnityEngine.ParticleSystemRenderer;
+    if (pr != null && pr.renderMode == UnityEngine.ParticleSystemRenderMode.None) continue;
+
+    foreach (var m in r.sharedMaterials)
+    {
+        if (m == null) { badMat++; if (badExample == "") badExample = r.name + ":NULL"; continue; }
+        var n = m.shader == null ? "NULLSHADER" : m.shader.name;
+        if (n == "Standard" || n.StartsWith("Legacy Shaders/") || n.Contains("HDRP")
+            || n == "Hidden/InternalErrorShader" || n == "NULLSHADER")
+        { badMat++; if (badExample == "") badExample = r.name + ":" + n; }
+    }
+}
+Check("every visible material draws under URP", badMat == 0, badMat > 0 ? $"{badMat} bad, e.g. {badExample}" : "");
+
+// --- blood ---
+var bloodRoot = UnityEngine.GameObject.Find("Hospital/Blood");
+int decals = bloodRoot != null ? bloodRoot.transform.childCount : 0;
+int looping = 0;
+if (bloodRoot != null)
+    foreach (var ps in bloodRoot.GetComponentsInChildren<UnityEngine.ParticleSystem>(true))
+        if (ps.main.loop) looping++;
+Check($"ambient blood present ({decals} decals)", decals > 0);
+Check("no blood system loops (the on/off blinking)", looping == 0, looping > 0 ? $"{looping} loop" : "");
+
+// --- gun ---
+var vm = UnityEngine.Object.FindFirstObjectByType<MonsterChase.Player.GunViewModel>();
+var cam = UnityEngine.Camera.main;
+float dot = (vm != null && cam != null) ? UnityEngine.Vector3.Dot(vm.transform.forward, cam.transform.forward) : -1f;
+Check("gun points where the camera points", dot > 0.9f, $"dot={dot:F2}");
+Check("gun model visible", vm != null && vm.GetComponentInChildren<UnityEngine.MeshRenderer>() != null);
+
+var gun = UnityEngine.Object.FindFirstObjectByType<MonsterChase.Player.Gun>();
+var gso = gun != null ? new UnityEditor.SerializedObject(gun) : null;
+int fires = gso != null ? gso.FindProperty("fireClips").arraySize : 0;
+int tails = gso != null ? gso.FindProperty("tailClips").arraySize : 0;
+int reloads = gso != null ? gso.FindProperty("reloadClips").arraySize : 0;
+Check($"gunshot clips wired ({fires})", fires >= 3);
+Check($"tail clips wired ({tails})", tails >= 2);
+Check($"reload clips wired ({reloads})", reloads >= 4);
+
+// --- monster ---
+var ai = UnityEngine.Object.FindFirstObjectByType<MonsterChase.Monster.MonsterAI>();
+Check("monster has AI", ai != null);
+Check("monster is shootable (has a collider)", ai != null && ai.GetComponent<UnityEngine.Collider>() != null);
+var an = ai != null ? ai.GetComponentInChildren<UnityEngine.Animator>() : null;
+Check("monster can animate (avatar + controller)",
+      an != null && an.avatar != null && an.runtimeAnimatorController != null);
+Check("monster spawn is on the navmesh",
+      ai != null && UnityEngine.AI.NavMesh.SamplePosition(ai.transform.position, out _, 2f, UnityEngine.AI.NavMesh.AllAreas));
+var route = UnityEngine.Object.FindFirstObjectByType<MonsterChase.Monster.PatrolRoute>();
+Check("patrol route exists", route != null && route.HasPoints);
+
+// --- systems ---
+Check("5 anchors", UnityEngine.Object.FindObjectsByType<MonsterChase.Ritual.AnchorSite>(UnityEngine.FindObjectsSortMode.None).Length == 5);
+Check("hiding spots >= 20", UnityEngine.Object.FindObjectsByType<MonsterChase.Hiding.HidingSpot>(UnityEngine.FindObjectsSortMode.None).Length >= 20);
+Check("ritual state present", UnityEngine.Object.FindFirstObjectByType<MonsterChase.Ritual.RitualState>() != null);
+Check("impacts wired", UnityEngine.Object.FindFirstObjectByType<MonsterChase.Player.Impacts>() != null);
+Check("player life wired", UnityEngine.Object.FindFirstObjectByType<MonsterChase.Player.PlayerLife>() != null);
+Check("player noise wired", UnityEngine.Object.FindFirstObjectByType<MonsterChase.Player.PlayerNoise>() != null);
+Check("no legacy input module", UnityEngine.Object.FindFirstObjectByType<UnityEngine.EventSystems.StandaloneInputModule>() == null);
+
+UnityEngine.Debug.Log($"[T] ===== {fail} FAILURES =====");

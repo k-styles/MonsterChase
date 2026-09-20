@@ -24,11 +24,18 @@ namespace MonsterChase.Player
 
         [Header("Feel")]
         [SerializeField] AudioSource fireAudio;
-        [SerializeField] AudioClip fireClip;
+        [Tooltip("Picked at random per shot so a magazine does not sound like a metronome.")]
+        [SerializeField] AudioClip[] fireClips;
+        [Tooltip("The report's tail, played under the shot at lower volume.")]
+        [SerializeField] AudioClip[] tailClips;
         [SerializeField] AudioClip drySound;
+        [Tooltip("Played in order across the reload, not all at once.")]
+        [SerializeField] AudioClip[] reloadClips;
 
         float nextShot;
         float reloadUntil;
+        int reloadStep;
+        float nextReloadStep;
 
         public int Ammo { get; private set; }
         public int Magazine => magazine;
@@ -49,6 +56,7 @@ namespace MonsterChase.Player
 
             if (Reloading)
             {
+                TickReloadAudio();
                 if (Time.time >= reloadUntil && Ammo == 0) Ammo = magazine;
                 return;
             }
@@ -68,6 +76,40 @@ namespace MonsterChase.Player
         {
             if (Reloading || Ammo == magazine) return;
             reloadUntil = Time.time + reloadSeconds;
+            reloadStep = 0;
+            nextReloadStep = Time.time;
+        }
+
+        /// <summary>
+        /// Walks the reload clips across the reload rather than stacking them on one
+        /// frame: slide lock, magazine out, magazine in, slide release.
+        /// </summary>
+        void TickReloadAudio()
+        {
+            if (fireAudio == null || reloadClips == null || reloadClips.Length == 0) return;
+            if (reloadStep >= reloadClips.Length || Time.time < nextReloadStep) return;
+
+            var clip = reloadClips[reloadStep];
+            if (clip != null) fireAudio.PlayOneShot(clip, 0.8f);
+
+            reloadStep++;
+            nextReloadStep = Time.time + reloadSeconds / Mathf.Max(1, reloadClips.Length);
+        }
+
+        void PlayShot()
+        {
+            if (fireAudio == null) return;
+
+            if (fireClips != null && fireClips.Length > 0)
+            {
+                var clip = fireClips[Random.Range(0, fireClips.Length)];
+                if (clip != null) fireAudio.PlayOneShot(clip);
+            }
+            if (tailClips != null && tailClips.Length > 0)
+            {
+                var tail = tailClips[Random.Range(0, tailClips.Length)];
+                if (tail != null) fireAudio.PlayOneShot(tail, 0.45f);
+            }
         }
 
         void Fire()
@@ -82,7 +124,7 @@ namespace MonsterChase.Player
             }
 
             Ammo--;
-            if (fireAudio != null && fireClip != null) fireAudio.PlayOneShot(fireClip);
+            PlayShot();
             if (viewModel != null) viewModel.Fired();
 
             if (sourceCamera == null) return;
