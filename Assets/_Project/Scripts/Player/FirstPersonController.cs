@@ -35,6 +35,8 @@ namespace MonsterChase.Player
         bool crouchToggled;
 
         public bool IsCrouching { get; private set; }
+        /// <summary>Sprinting under load, which is what costs you breath.</summary>
+        public bool IsSprinting { get; private set; }
         public float Height => cc != null ? cc.height : standHeight;
 
         void Awake()
@@ -128,8 +130,10 @@ namespace MonsterChase.Player
             var dir = transform.right * x + transform.forward * z;
             if (dir.sqrMagnitude > 1f) dir.Normalize();
 
+            IsSprinting = !IsCrouching && kb.leftShiftKey.isPressed && dir.sqrMagnitude > 0.01f;
+
             float speed = IsCrouching ? crouchSpeed
-                        : kb.leftShiftKey.isPressed ? runSpeed
+                        : IsSprinting ? runSpeed
                         : walkSpeed;
 
             if (cc.isGrounded && verticalVelocity < 0f) verticalVelocity = -2f;

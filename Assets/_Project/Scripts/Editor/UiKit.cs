@@ -36,7 +36,23 @@ namespace MonsterChase.EditorTools
         /// </summary>
         public static void EnsureEventSystem()
         {
-            if (Object.FindFirstObjectByType<UnityEngine.EventSystems.EventSystem>() != null) return;
+            var existing = Object.FindFirstObjectByType<UnityEngine.EventSystems.EventSystem>();
+            if (existing != null)
+            {
+                // A scene inherited from an asset pack brings its own EventSystem, and
+                // it is almost always the legacy one. Skipping on "an EventSystem
+                // exists" leaves that in place and every click in the game dies.
+                var legacy = existing.GetComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+                if (legacy != null) Object.DestroyImmediate(legacy);
+
+                if (existing.GetComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>() == null)
+                {
+                    var swapped = existing.gameObject.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
+                    swapped.AssignDefaultActions();
+                    Debug.Log("[UiKit] Replaced an inherited legacy input module with the Input System one.");
+                }
+                return;
+            }
 
             var es = new GameObject("EventSystem");
             es.AddComponent<UnityEngine.EventSystems.EventSystem>();

@@ -1,0 +1,51 @@
+var scene = UnityEditor.SceneManagement.EditorSceneManager.OpenScene(
+    "Assets/_Project/Scenes/FloodedChase.unity", UnityEditor.SceneManagement.OpenSceneMode.Single);
+
+int fail = 0;
+void Check(string what, bool ok, string d = "") { if (!ok) fail++;
+  UnityEngine.Debug.Log($"[F] {(ok ? "PASS" : "FAIL")}  {what}{(d != "" ? "  -- " + d : "")}"); }
+
+var ai = UnityEngine.Object.FindFirstObjectByType<MonsterChase.Monster.MonsterAI>();
+var player = UnityEngine.GameObject.FindGameObjectWithTag("Player");
+var cam = UnityEngine.Camera.main;
+
+Check("terrain present (the village is here)", UnityEngine.Terrain.activeTerrain != null);
+Check("player exists", player != null);
+Check("exactly one active camera",
+  UnityEngine.Object.FindObjectsByType<UnityEngine.Camera>(UnityEngine.FindObjectsSortMode.None).Length == 1,
+  $"{UnityEngine.Object.FindObjectsByType<UnityEngine.Camera>(UnityEngine.FindObjectsSortMode.None).Length} active");
+Check("player is on the navmesh",
+  player != null && UnityEngine.AI.NavMesh.SamplePosition(player.transform.position, out _, 5f, UnityEngine.AI.NavMesh.AllAreas));
+Check("monster is on the navmesh",
+  ai != null && UnityEngine.AI.NavMesh.SamplePosition(ai.transform.position, out _, 5f, UnityEngine.AI.NavMesh.AllAreas));
+Check("monster shootable", ai != null && ai.GetComponent<UnityEngine.Collider>() != null);
+var an = ai != null ? ai.GetComponentInChildren<UnityEngine.Animator>() : null;
+Check("monster animates", an != null && an.avatar != null && an.runtimeAnimatorController != null);
+Check("creature voice wired", ai != null && ai.GetComponent<MonsterChase.Monster.CreatureVoice>() != null);
+
+var route = UnityEngine.Object.FindFirstObjectByType<MonsterChase.Monster.PatrolRoute>();
+Check("patrol route has points", route != null && route.HasPoints);
+
+var breath = UnityEngine.Object.FindFirstObjectByType<MonsterChase.Systems.PlayerBreath>();
+Check("hold-breath wired", breath != null);
+Check("breath meter wired", UnityEngine.Object.FindFirstObjectByType<MonsterChase.UI.BreathMeter>() != null);
+Check("5 anchors", UnityEngine.Object.FindObjectsByType<MonsterChase.Ritual.AnchorSite>(UnityEngine.FindObjectsSortMode.None).Length == 5);
+Check("ritual state", UnityEngine.Object.FindFirstObjectByType<MonsterChase.Ritual.RitualState>() != null);
+int hides = UnityEngine.Object.FindObjectsByType<MonsterChase.Hiding.HidingSpot>(UnityEngine.FindObjectsSortMode.None).Length;
+Check($"hiding spots ({hides})", hides >= 10);
+Check("impacts wired", UnityEngine.Object.FindFirstObjectByType<MonsterChase.Player.Impacts>() != null);
+Check("gun viewmodel", UnityEngine.Object.FindFirstObjectByType<MonsterChase.Player.GunViewModel>() != null);
+Check("no legacy input module", UnityEngine.Object.FindFirstObjectByType<UnityEngine.EventSystems.StandaloneInputModule>() == null);
+
+// Everything we added is under one root, so a rebuild cannot orphan it in the village.
+var chase = UnityEngine.GameObject.Find("Chase");
+Check("our additions live under a single Chase root", chase != null,
+      chase != null ? $"{chase.transform.childCount} children" : "missing");
+
+// Anchors must be reachable, or the ritual cannot be completed.
+int reachable = 0;
+foreach (var a in UnityEngine.Object.FindObjectsByType<MonsterChase.Ritual.AnchorSite>(UnityEngine.FindObjectsSortMode.None))
+  if (UnityEngine.AI.NavMesh.SamplePosition(a.transform.position, out _, 6f, UnityEngine.AI.NavMesh.AllAreas)) reachable++;
+Check($"all 5 anchors reachable ({reachable}/5)", reachable == 5);
+
+UnityEngine.Debug.Log($"[F] ===== {fail} FAILURES =====");

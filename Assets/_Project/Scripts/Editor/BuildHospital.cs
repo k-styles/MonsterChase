@@ -360,7 +360,7 @@ namespace MonsterChase.EditorTools
 
         // ------------------------------------------------------------ cast
 
-        static GameObject BuildPlayer(Vector3 position)
+        internal static GameObject BuildPlayer(Vector3 position)
         {
             var player = new GameObject("Player") { tag = "Player" };
             player.transform.position = position;
@@ -415,7 +415,7 @@ namespace MonsterChase.EditorTools
         }
 
         /// <summary>The gun you can see: model, muzzle point and flash, riding the camera.</summary>
-        static GunViewModel BuildViewModel(Transform camera)
+        internal static GunViewModel BuildViewModel(Transform camera)
         {
             var rig = new GameObject("ViewModel");
             rig.transform.SetParent(camera, false);
@@ -466,7 +466,7 @@ namespace MonsterChase.EditorTools
             return vm;
         }
 
-        static MonsterVitals BuildMonster(Vector3 position, Transform player, PatrolRoute route)
+        internal static MonsterVitals BuildMonster(Vector3 position, Transform player, PatrolRoute route)
         {
             var go = new GameObject("Monster");
             go.transform.position = position;
@@ -552,7 +552,7 @@ namespace MonsterChase.EditorTools
         }
 
         /// <summary>Noise and death, both of which need the HUD canvas to exist.</summary>
-        static void WirePlayerLife(GameObject player, VitalsReadout hud)
+        internal static void WirePlayerLife(GameObject player, VitalsReadout hud)
         {
             player.AddComponent<PlayerNoise>();
 
@@ -636,7 +636,7 @@ namespace MonsterChase.EditorTools
 
         // -------------------------------------------------------------- ui
 
-        static VitalsReadout BuildHud(MonsterVitals monster)
+        internal static VitalsReadout BuildHud(MonsterVitals monster)
         {
             UiKit.NewCanvas("HUD", out var canvasGo);
             UiKit.EnsureEventSystem();
@@ -676,7 +676,7 @@ namespace MonsterChase.EditorTools
             return hud;
         }
 
-        static void BuildPauseMenu()
+        internal static void BuildPauseMenu()
         {
             UiKit.NewCanvas("PauseCanvas", out var canvasGo);
             canvasGo.GetComponent<Canvas>().sortingOrder = 10;
@@ -712,7 +712,7 @@ namespace MonsterChase.EditorTools
         }
 
         /// <summary>The effect spawner the gun talks to when a round lands in something.</summary>
-        static void BuildImpacts()
+        internal static void BuildImpacts()
         {
             // Found by name, not by path: the pack keeps its one-shot variants in a
             // subfolder and a hardcoded path silently produced dry hits.
@@ -771,7 +771,7 @@ namespace MonsterChase.EditorTools
         }
 
         /// <summary>Fills a serialized AudioClip array by clip name, skipping any that are missing.</summary>
-        static void FillClips(SerializedProperty array, params string[] names)
+        internal static void FillClips(SerializedProperty array, params string[] names)
         {
             var found = new List<Object>();
             foreach (var n in names)
@@ -785,7 +785,7 @@ namespace MonsterChase.EditorTools
                 array.GetArrayElementAtIndex(i).objectReferenceValue = found[i];
         }
 
-        static AudioClip FindClip(string name)
+        internal static AudioClip FindClip(string name)
         {
             foreach (var guid in AssetDatabase.FindAssets($"{name} t:AudioClip"))
             {
@@ -797,7 +797,7 @@ namespace MonsterChase.EditorTools
         }
 
         /// <summary>Exact-name prefab lookup anywhere under Assets.</summary>
-        static GameObject FindPrefab(string name)
+        internal static GameObject FindPrefab(string name)
         {
             foreach (var guid in AssetDatabase.FindAssets($"{name} t:Prefab"))
             {
@@ -808,7 +808,7 @@ namespace MonsterChase.EditorTools
             return null;
         }
 
-        static void Spawn(GameObject prefab, Transform parent, Vector3 at, float yaw)
+        internal static void Spawn(GameObject prefab, Transform parent, Vector3 at, float yaw)
         {
             if (prefab == null) return;
             var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, parent);
@@ -824,7 +824,7 @@ namespace MonsterChase.EditorTools
         /// Emit once, then live effectively forever: the splat is drawn a single time
         /// and simply stays there, which is what a stain on the floor does.
         /// </summary>
-        static void MakePermanent(GameObject go)
+        internal static void MakePermanent(GameObject go)
         {
             foreach (var ps in go.GetComponentsInChildren<ParticleSystem>(true))
             {
