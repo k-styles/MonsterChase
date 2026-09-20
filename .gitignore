@@ -1,0 +1,68 @@
+# Unity generated
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+/[Aa]ssets/[Ss]ceneDependencyCache*
+/[Aa]ssets/AssetStoreTools*
+/[Aa]ssets/Plugins/Editor/JetBrains*
+
+# Never commit these
+sysinfo.txt
+*.stackdump
+crashlytics-build.properties
+
+# IDE
+.vs/
+.vscode/
+.idea/
+/*.csproj
+/*.unityproj
+/*.sln
+/*.suo
+/*.user
+/*.userprefs
+/*.pidb
+/*.booproj
+/*.svd
+/*.pdb
+/*.mdb
+/*.opendb
+/*.VC.db
+
+# Builds
+*.apk
+*.aab
+*.unitypackage
+*.app
+*.dmg
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+
+# Claude scratch
+.claude/settings.local.json
+
+# ---------------------------------------------------------------------------
+# THIRD-PARTY ASSET PACKS. This repo is PUBLIC.
+#
+# Anything bought or licensed from the Asset Store must NOT be committed --
+# publishing pack contents is redistribution and the EULAs forbid it. Our own
+# work lives under Assets/_Project. Bought packs go at the top level of
+# Assets/ and get a rule added HERE, on the day they are imported.
+#
+# Rule of thumb: if you did not make it and it is not CC0, it does not go up.
+# Record each pack in Docs/ASSETS.md so a fresh clone knows what to reimport.
+#
+# Add new packs below this line:
+# /Assets/<PackName>/
+# /Assets/<PackName>.meta
+# ---------------------------------------------------------------------------
