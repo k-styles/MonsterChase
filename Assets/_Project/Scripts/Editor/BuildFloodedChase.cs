@@ -88,8 +88,14 @@ namespace MonsterChase.EditorTools
 
             var anchors = PlaceAnchors(root, centre);
             var patrol = BuildPatrolRing(root, centre);
-            var monster = BuildHospital.BuildMonster(PlaceOn(centre + new Vector3(45f, 0f, 45f)),
-                                                    player.transform, patrol);
+            // Near enough that an encounter happens in the first minute. At the far
+            // corner it was 141m away with the village in between, which meant the
+            // bodies could stay locked for the whole run.
+            var monsterSpot = PlaceOn(player.transform.position + new Vector3(30f, 0f, 26f));
+            if (NavMesh.SamplePosition(monsterSpot, out var mHit, 15f, NavMesh.AllAreas))
+                monsterSpot = mHit.position;
+
+            var monster = BuildHospital.BuildMonster(monsterSpot, player.transform, patrol);
             monster.transform.SetParent(root, true);
             WireCreatureVoice(monster.gameObject, player.transform);
 

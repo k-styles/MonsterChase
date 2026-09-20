@@ -47,6 +47,10 @@ namespace MonsterChase.Monster
         [SerializeField] float searchSeconds = 22f;
         [SerializeField] float searchRadius = 6f;
 
+        [Header("Encounter")]
+        [Tooltip("How far away laying eyes on it still counts as having met it.")]
+        [SerializeField] float playerSightRange = 70f;
+
         [Header("Catching")]
         [SerializeField] float catchDistance = 1.7f;
 
@@ -106,9 +110,12 @@ namespace MonsterChase.Monster
             bool canSee = CanSeePlayer();
             sightTimer = canSee ? sightTimer + Time.deltaTime : 0f;
 
-            // Line of sight runs both ways. The first time it has you in the open is
-            // the moment the bodies stop being scenery and become the job.
+            // The encounter counts either way round. It noticing you is one way; you
+            // laying eyes on it is the other, and it is the one the player actually
+            // experiences as "I have seen what is out here". Waiting only on its own
+            // sight meant the gate could stay shut for the whole run.
             if (canSee) Ritual.AnchorSite.MarkMonsterSeen();
+            else TickPlayerSighting();
 
             if (TryCatch()) return;
 
@@ -141,6 +148,27 @@ namespace MonsterChase.Monster
 
             // A corridor loop means most of the map is behind a wall most of the time.
             return !Physics.Linecast(eye, target, out _, sightBlockers, QueryTriggerInteraction.Ignore);
+        }
+
+        /// <summary>Have you looked at it? On screen, close enough, and not behind a wall.</summary>
+        void TickPlayerSighting()
+        {
+            if (Ritual.AnchorSite.MonsterSeen) return;
+
+            var cam = Camera.main;
+            if (cam == null) return;
+
+            var chest = transform.position + Vector3.up * 1.6f;
+            if (Vector3.Distance(cam.transform.position, chest) > playerSightRange) return;
+
+            var viewport = cam.WorldToViewportPoint(chest);
+            if (viewport.z <= 0f || viewport.x < 0f || viewport.x > 1f
+                || viewport.y < 0f || viewport.y > 1f) return;
+
+            if (Physics.Linecast(cam.transform.position, chest, out _, sightBlockers,
+                                 QueryTriggerInteraction.Ignore)) return;
+
+            Ritual.AnchorSite.MarkMonsterSeen();
         }
 
         void OnNoise(Vector3 at, float radius)
