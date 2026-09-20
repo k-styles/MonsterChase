@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using MonsterChase.Monster;
+using MonsterChase.Interaction;
 
 namespace MonsterChase.Player
 {
@@ -12,6 +13,7 @@ namespace MonsterChase.Player
     public class Gun : MonoBehaviour
     {
         [SerializeField] Camera sourceCamera;
+        [SerializeField] Interactor interactor;
         [SerializeField] float damage = 26f;
         [SerializeField] float shotsPerSecond = 4f;
         [SerializeField] float range = 90f;
@@ -35,6 +37,7 @@ namespace MonsterChase.Player
         {
             Ammo = magazine;
             if (sourceCamera == null) sourceCamera = Camera.main;
+            if (interactor == null) interactor = GetComponent<Interactor>();
         }
 
         void Update()
@@ -51,6 +54,10 @@ namespace MonsterChase.Player
             var mouse = Mouse.current;
             if (mouse == null || !mouse.leftButton.isPressed) return;
             if (Time.time < nextShot || Cursor.lockState != CursorLockMode.Locked) return;
+
+            // Looking at a door, a body, a pickup? The click belongs to that, not to
+            // the gun. One button, and it always does the sensible thing.
+            if (interactor != null && interactor.HasTarget) return;
 
             Fire();
         }

@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using MonsterChase.Monster;
 using MonsterChase.Ritual;
+using MonsterChase.Interaction;
 
 namespace MonsterChase.UI
 {
@@ -19,13 +20,13 @@ namespace MonsterChase.UI
         [SerializeField] Image burnFill;
         [SerializeField] Text prompt;
 
-        AnchorSite[] anchors;
+        Interactor interactor;
         bool visible = true;
 
         void Start()
         {
             if (monster == null) monster = Object.FindFirstObjectByType<MonsterVitals>();
-            anchors = Object.FindObjectsByType<AnchorSite>(FindObjectsSortMode.None);
+            interactor = Object.FindFirstObjectByType<Interactor>();
         }
 
         void Update()
@@ -60,24 +61,28 @@ namespace MonsterChase.UI
             TickAnchorPrompt();
         }
 
-        /// <summary>Shows the burn meter for whichever anchor you are standing at.</summary>
+        /// <summary>
+        /// Prompt and burn meter for whatever the interactor currently has, so this
+        /// works for every interactable rather than just anchors.
+        /// </summary>
         void TickAnchorPrompt()
         {
-            AnchorSite near = null;
-            if (anchors != null)
-                foreach (var a in anchors)
-                    if (a != null && !a.Burnt && a.PlayerInRange) { near = a; break; }
+            var target = interactor != null ? interactor.Current : null;
+            var anchor = target as AnchorSite;
+            bool show = target != null && target.CanInteract;
 
-            bool show = near != null;
             if (prompt != null)
             {
                 prompt.enabled = show;
-                if (show) prompt.text = "hold [F] to burn";
+                if (show) prompt.text = $"[LMB] or [E]  {target.Prompt}";
             }
+
+            // Only a hold interactable has a meter worth drawing.
+            bool meter = show && anchor != null;
             if (burnFill != null)
             {
-                burnFill.transform.parent.gameObject.SetActive(show);
-                if (show) burnFill.fillAmount = near.Progress;
+                burnFill.transform.parent.gameObject.SetActive(meter);
+                if (meter) burnFill.fillAmount = anchor.Progress;
             }
         }
     }

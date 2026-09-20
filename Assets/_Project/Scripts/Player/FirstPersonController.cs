@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using MonsterChase.Core;
 
 namespace MonsterChase.Player
 {
@@ -23,12 +24,15 @@ namespace MonsterChase.Player
 
         [Header("Look")]
         [SerializeField] Transform cameraPivot;
-        [SerializeField] float sensitivity = 0.11f;
-        [SerializeField] float keyTurnSpeed = 140f;
+        [SerializeField] Camera playerCamera;
         [SerializeField] float pitchClamp = 85f;
+        // Mouse and arrow-key sensitivity, invert-Y and FOV all live in GameSettings so
+        // the options menu can change them mid-game. Nothing is cached: they are read
+        // per frame, which costs nothing and means a slider moves the camera live.
 
         CharacterController cc;
         float pitch, verticalVelocity;
+        bool crouchToggled;
 
         public bool IsCrouching { get; private set; }
         public float Height => cc != null ? cc.height : standHeight;
@@ -37,16 +41,32 @@ namespace MonsterChase.Player
         {
             cc = GetComponent<CharacterController>();
             if (cameraPivot == null && Camera.main != null) cameraPivot = Camera.main.transform.parent;
+            if (playerCamera == null) playerCamera = GetComponentInChildren<Camera>();
+            ApplyFieldOfView();
         }
 
-        void OnEnable() => LockCursor(true);
-        void OnDisable() => LockCursor(false);
+        void OnEnable()
+        {
+            GameSettings.Changed += ApplyFieldOfView;
+            LockCursor(true);
+        }
+
+        void OnDisable()
+        {
+            GameSettings.Changed -= ApplyFieldOfView;
+            LockCursor(false);
+        }
+
+        void ApplyFieldOfView()
+        {
+            if (playerCamera != null) playerCamera.fieldOfView = GameSettings.FieldOfView;
+        }
 
         void Update()
         {
+            // Escape belongs to PauseMenu. Two scripts reacting to the same press
+            // ends with the cursor locking and unlocking in the same frame.
             var kb = Keyboard.current;
-            if (kb != null && kb.escapeKey.wasPressedThisFrame)
-                LockCursor(Cursor.lockState != CursorLockMode.Locked);
 
             Look(kb);
             Move(kb);
@@ -59,7 +79,7 @@ namespace MonsterChase.Player
             Vector2 delta = Vector2.zero;
 
             var mouse = Mouse.current;
-            if (mouse != null) delta += mouse.delta.ReadValue() * sensitivity;
+            if (mouse != null) delta += mouse.delta.ReadValue() * GameSettings.MouseSensitivity;
 
             if (kb != null)
             {
@@ -68,10 +88,12 @@ namespace MonsterChase.Player
                 if (kb.rightArrowKey.isPressed) keys.x += 1f;
                 if (kb.downArrowKey.isPressed)  keys.y -= 1f;
                 if (kb.upArrowKey.isPressed)    keys.y += 1f;
-                if (keys != Vector2.zero) delta += keys * keyTurnSpeed * Time.deltaTime;
+                if (keys != Vector2.zero) delta += keys * GameSettings.ArrowSensitivity * Time.deltaTime;
             }
 
             if (delta == Vector2.zero) return;
+
+            if (GameSettings.InvertY) delta.y = -delta.y;
 
             transform.Rotate(Vector3.up * delta.x);
             pitch = Mathf.Clamp(pitch - delta.y, -pitchClamp, pitchClamp);
@@ -82,9 +104,21 @@ namespace MonsterChase.Player
         {
             if (kb == null) return;
 
-            // Crouch is held, not toggled, so you cannot accidentally stay stuck under
-            // a bed while something is walking towards you.
-            IsCrouching = kb.leftCtrlKey.isPressed || kb.cKey.isPressed;
+            // Held by default, so you cannot accidentally stay stuck under a bed while
+            // something walks towards you. Toggle is available for anyone who would
+            // rather not hold a key down for a whole hiding sequence.
+            bool crouchKey = kb.leftCtrlKey.isPressed || kb.cKey.isPressed;
+            if (GameSettings.HoldToCrouch)
+            {
+                IsCrouching = crouchKey;
+                crouchToggled = false;
+            }
+            else
+            {
+                if (kb.leftCtrlKey.wasPressedThisFrame || kb.cKey.wasPressedThisFrame)
+                    crouchToggled = !crouchToggled;
+                IsCrouching = crouchToggled;
+            }
             float wanted = IsCrouching ? crouchHeight : standHeight;
             cc.height = Mathf.Lerp(cc.height, wanted, crouchLerp * Time.deltaTime);
             cc.center = new Vector3(0f, cc.height * 0.5f, 0f);

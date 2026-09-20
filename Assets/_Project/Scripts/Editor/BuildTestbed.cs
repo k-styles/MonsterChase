@@ -6,6 +6,7 @@ using MonsterChase.Monster;
 using MonsterChase.Player;
 using MonsterChase.Ritual;
 using MonsterChase.UI;
+using MonsterChase.Interaction;
 
 namespace MonsterChase.EditorTools
 {
@@ -36,8 +37,10 @@ namespace MonsterChase.EditorTools
             BuildAnchors(5, 11f);
 
             var hud = BuildHud(monster);
+            BuildPauseMenu();
 
             EditorSceneManager.MarkSceneDirty(scene);
+            BuildMainMenu.RegisterScenes();
             EditorSceneManager.SaveScene(scene, ScenePath);
 
             Debug.Log($"[Testbed] Built {ScenePath}. " +
@@ -92,6 +95,11 @@ namespace MonsterChase.EditorTools
             cso.FindProperty("cameraPivot").objectReferenceValue = pivot.transform;
             cso.ApplyModifiedPropertiesWithoutUndo();
 
+            var interactor = player.AddComponent<Interactor>();
+            var iso = new SerializedObject(interactor);
+            iso.FindProperty("sourceCamera").objectReferenceValue = cam;
+            iso.ApplyModifiedPropertiesWithoutUndo();
+
             var gun = player.AddComponent<Gun>();
             var audio = player.AddComponent<AudioSource>();
             audio.playOnAwake = false;
@@ -99,6 +107,7 @@ namespace MonsterChase.EditorTools
             var gso = new SerializedObject(gun);
             gso.FindProperty("sourceCamera").objectReferenceValue = cam;
             gso.FindProperty("fireAudio").objectReferenceValue = audio;
+            gso.FindProperty("interactor").objectReferenceValue = interactor;
             gso.ApplyModifiedPropertiesWithoutUndo();
 
             return player;
@@ -133,7 +142,11 @@ namespace MonsterChase.EditorTools
                 body.transform.rotation = Quaternion.Euler(90f, a * Mathf.Rad2Deg, 0f);
                 body.transform.localScale = new Vector3(0.5f, 0.9f, 0.5f);
                 body.GetComponent<MeshRenderer>().sharedMaterial = Grey(new Color(0.42f, 0.2f, 0.22f));
-                Object.DestroyImmediate(body.GetComponent<Collider>());
+
+                // Trigger, not solid: the interact ray needs something to hit, but you
+                // should be able to walk over a body on the floor.
+                var col = body.GetComponent<Collider>();
+                if (col != null) col.isTrigger = true;
 
                 var light = new GameObject("FireLight");
                 light.transform.SetParent(body.transform, false);
@@ -161,29 +174,29 @@ namespace MonsterChase.EditorTools
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             canvasGo.AddComponent<GraphicRaycaster>();
 
-            var readout = NewText("Readout", canvasGo.transform, 22, TextAnchor.UpperLeft);
+            var readout = UiKit.NewText("Readout", canvasGo.transform, 22, TextAnchor.UpperLeft);
             readout.color = new Color(0.85f, 0.87f, 0.9f);
-            Place(readout.rectTransform, 0.02f, 0.30f, 0.68f, 0.97f);
+            UiKit.Place(readout.rectTransform, 0.02f, 0.30f, 0.68f, 0.97f);
 
-            var healthBack = NewImage("MonsterHealthBack", canvasGo.transform, new Color(0f, 0f, 0f, 0.5f));
-            Place(healthBack.rectTransform, 0.35f, 0.65f, 0.90f, 0.93f);
-            var healthFill = NewImage("Fill", healthBack.transform, new Color(0.75f, 0.2f, 0.2f));
-            Stretch(healthFill.rectTransform);
+            var healthBack = UiKit.NewImage("MonsterHealthBack", canvasGo.transform, new Color(0f, 0f, 0f, 0.5f));
+            UiKit.Place(healthBack.rectTransform, 0.35f, 0.65f, 0.90f, 0.93f);
+            var healthFill = UiKit.NewImage("Fill", healthBack.transform, new Color(0.75f, 0.2f, 0.2f));
+            UiKit.Stretch(healthFill.rectTransform);
             healthFill.type = Image.Type.Filled;
             healthFill.fillMethod = Image.FillMethod.Horizontal;
 
-            var burnBack = NewImage("BurnBack", canvasGo.transform, new Color(0f, 0f, 0f, 0.5f));
-            Place(burnBack.rectTransform, 0.40f, 0.60f, 0.16f, 0.19f);
-            var burnFill = NewImage("Fill", burnBack.transform, new Color(1f, 0.55f, 0.18f));
-            Stretch(burnFill.rectTransform);
+            var burnBack = UiKit.NewImage("BurnBack", canvasGo.transform, new Color(0f, 0f, 0f, 0.5f));
+            UiKit.Place(burnBack.rectTransform, 0.40f, 0.60f, 0.16f, 0.19f);
+            var burnFill = UiKit.NewImage("Fill", burnBack.transform, new Color(1f, 0.55f, 0.18f));
+            UiKit.Stretch(burnFill.rectTransform);
             burnFill.type = Image.Type.Filled;
             burnFill.fillMethod = Image.FillMethod.Horizontal;
 
-            var prompt = NewText("Prompt", canvasGo.transform, 24, TextAnchor.LowerCenter);
+            var prompt = UiKit.NewText("Prompt", canvasGo.transform, 24, TextAnchor.LowerCenter);
             prompt.color = new Color(1f, 1f, 1f, 0.75f);
-            Place(prompt.rectTransform, 0.3f, 0.7f, 0.20f, 0.24f);
+            UiKit.Place(prompt.rectTransform, 0.3f, 0.7f, 0.20f, 0.24f);
 
-            var crosshair = NewImage("Crosshair", canvasGo.transform, new Color(1f, 1f, 1f, 0.55f));
+            var crosshair = UiKit.NewImage("Crosshair", canvasGo.transform, new Color(1f, 1f, 1f, 0.55f));
             crosshair.rectTransform.anchorMin = crosshair.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
             crosshair.rectTransform.sizeDelta = new Vector2(4f, 4f);
             crosshair.rectTransform.anchoredPosition = Vector2.zero;
@@ -199,6 +212,42 @@ namespace MonsterChase.EditorTools
             return hud;
         }
 
+        static void BuildPauseMenu()
+        {
+            UiKit.NewCanvas("PauseCanvas", out var canvasGo);
+            canvasGo.GetComponent<Canvas>().sortingOrder = 10;
+            UiKit.EnsureEventSystem();
+
+            var rowsGo = UiKit.NewImage("PausePanel", canvasGo.transform,
+                                        new Color(0.03f, 0.03f, 0.04f, 0.88f));
+            rowsGo.raycastTarget = true;
+            UiKit.Stretch(rowsGo.rectTransform);
+
+            var heading = UiKit.NewText("Heading", rowsGo.transform, 54, TextAnchor.MiddleLeft);
+            heading.text = "PAUSED";
+            UiKit.Place(heading.rectTransform, 0.14f, 0.7f, 0.66f, 0.76f);
+
+            var resume = UiKit.NewMenuButton("Resume", rowsGo.transform, "resume", 32, out _);
+            UiKit.Place((RectTransform)resume.transform, 0.14f, 0.45f, 0.54f, 0.60f);
+            var controls = UiKit.NewMenuButton("Controls", rowsGo.transform, "controls", 32, out _);
+            UiKit.Place((RectTransform)controls.transform, 0.14f, 0.45f, 0.47f, 0.53f);
+            var toMenu = UiKit.NewMenuButton("ToMenu", rowsGo.transform, "main menu", 32, out _);
+            UiKit.Place((RectTransform)toMenu.transform, 0.14f, 0.45f, 0.40f, 0.46f);
+
+            var settings = SettingsPanelBuilder.Build(canvasGo.transform);
+            settings.transform.SetAsLastSibling();
+
+            var pause = canvasGo.AddComponent<PauseMenu>();
+            var so = new SerializedObject(pause);
+            so.FindProperty("rootPanel").objectReferenceValue = rowsGo.gameObject;
+            so.FindProperty("settings").objectReferenceValue = settings;
+            so.FindProperty("resumeButton").objectReferenceValue = resume;
+            so.FindProperty("controlsButton").objectReferenceValue = controls;
+            so.FindProperty("menuButton").objectReferenceValue = toMenu;
+            so.FindProperty("menuScene").stringValue = "Menu";
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
         // ------------------------------------------------------------------ helpers
 
         static Material Grey(Color c)
@@ -212,42 +261,8 @@ namespace MonsterChase.EditorTools
             return AssetDatabase.LoadAssetAtPath<Material>(path);
         }
 
-        static Text NewText(string name, Transform parent, int size, TextAnchor anchor)
-        {
-            var go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            var t = go.AddComponent<Text>();
-            t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            t.fontSize = size;
-            t.alignment = anchor;
-            t.color = Color.white;
-            t.raycastTarget = false;
-            t.horizontalOverflow = HorizontalWrapMode.Wrap;
-            t.verticalOverflow = VerticalWrapMode.Overflow;
-            return t;
-        }
 
-        static Image NewImage(string name, Transform parent, Color c)
-        {
-            var go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            var img = go.AddComponent<Image>();
-            img.color = c;
-            img.raycastTarget = false;
-            return img;
-        }
 
-        static void Place(RectTransform r, float xMin, float xMax, float yMin, float yMax)
-        {
-            r.anchorMin = new Vector2(xMin, yMin);
-            r.anchorMax = new Vector2(xMax, yMax);
-            r.offsetMin = r.offsetMax = Vector2.zero;
-        }
 
-        static void Stretch(RectTransform r)
-        {
-            r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one;
-            r.offsetMin = r.offsetMax = Vector2.zero;
-        }
     }
 }
