@@ -102,6 +102,7 @@ namespace MonsterChase.EditorTools
             var hud = BuildHospital.BuildHud(monster);
             hud.transform.SetParent(root, false);
             BuildHospital.BuildPauseMenu();
+            BuildHospital.BuildFrameRate();
             BuildHospital.WirePlayerLife(player, hud);
             BuildHospital.BuildImpacts();
             BuildAmbience(root, monster.GetComponent<MonsterAI>());

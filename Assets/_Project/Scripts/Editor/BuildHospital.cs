@@ -778,6 +778,14 @@ namespace MonsterChase.EditorTools
             return hud;
         }
 
+        /// <summary>Caps the renderer so a quiet scene does not run flat out.</summary>
+        internal static void BuildFrameRate()
+        {
+            if (Object.FindFirstObjectByType<MonsterChase.Core.FrameRate>() != null) return;
+            var go = new GameObject("FrameRate");
+            go.AddComponent<MonsterChase.Core.FrameRate>();
+        }
+
         internal static void BuildPauseMenu()
         {
             UiKit.NewCanvas("PauseCanvas", out var canvasGo);

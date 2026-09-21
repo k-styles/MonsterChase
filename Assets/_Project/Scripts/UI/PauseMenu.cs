@@ -21,7 +21,13 @@ namespace MonsterChase.UI
         [SerializeField] Button menuButton;
         [SerializeField] string menuScene = "Menu";
 
+        [Header("While paused")]
+        [Tooltip("Frame cap for the pause screen. With timeScale at 0 there is nothing to simulate, so the renderer will otherwise run flat out over a static image and cook a fanless machine.")]
+        [SerializeField] int pausedFrameRate = 30;
+
         public bool Paused { get; private set; }
+
+        int frameRateBeforePause;
 
         void Awake()
         {
@@ -33,7 +39,11 @@ namespace MonsterChase.UI
             SetPaused(false);
         }
 
-        void OnDestroy() => Time.timeScale = 1f;
+        void OnDestroy()
+        {
+            Time.timeScale = 1f;
+            Application.targetFrameRate = frameRateBeforePause == 0 ? -1 : frameRateBeforePause;
+        }
 
         void Update()
         {
@@ -61,6 +71,17 @@ namespace MonsterChase.UI
             if (!paused && settings != null) settings.gameObject.SetActive(false);
 
             Time.timeScale = paused ? 0f : 1f;
+
+            if (paused)
+            {
+                frameRateBeforePause = Application.targetFrameRate;
+                Application.targetFrameRate = pausedFrameRate;
+            }
+            else
+            {
+                Application.targetFrameRate = frameRateBeforePause == 0 ? -1 : frameRateBeforePause;
+            }
+
             FirstPersonController.LockCursor(!paused);
 
             // Stop the player looking around behind the menu.
