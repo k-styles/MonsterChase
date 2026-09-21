@@ -568,6 +568,12 @@ namespace MonsterChase.EditorTools
             agent.stoppingDistance = 0.3f;
             agent.autoBraking = false;
 
+            var director = go.AddComponent<MonsterDirector>();
+            var dso = new SerializedObject(director);
+            dso.FindProperty("player").objectReferenceValue = player;
+            dso.FindProperty("creature").objectReferenceValue = null;   // found in Awake
+            dso.ApplyModifiedPropertiesWithoutUndo();
+
             var anim = go.AddComponent<MonsterAnimation>();
             var anso = new SerializedObject(anim);
             anso.FindProperty("animator").objectReferenceValue = go.GetComponentInChildren<Animator>();

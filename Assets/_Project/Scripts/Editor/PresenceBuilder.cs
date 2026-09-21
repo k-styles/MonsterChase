@@ -179,6 +179,49 @@ namespace MonsterChase.EditorTools
         }
 
         /// <summary>
+        /// The pack ships every clip with loopTime off and no configured splits, so a
+        /// walk plays once and then holds its last frame while the agent keeps moving --
+        /// the legs stop and the body slides. Locomotion and idle have to loop.
+        ///
+        /// Runs once; the flags persist in the model importer afterwards.
+        /// </summary>
+        static void EnsureLoopingClips()
+        {
+            var loopers = new System.Collections.Generic.HashSet<string>
+            {
+                "Demon|Idle1", "Demon|Idle2", "Demon|Idle3",
+                "Demon|Walk1", "Demon|Walk2", "Demon|Run1",
+                "Demon|Telepathic-loop", "Demon|Throw-loop",
+            };
+
+            foreach (var guid in AssetDatabase.FindAssets("t:Model", new[] { DemonRoot }))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var imp = AssetImporter.GetAtPath(path) as ModelImporter;
+                if (imp == null) continue;
+
+                var source = imp.clipAnimations.Length > 0 ? imp.clipAnimations : imp.defaultClipAnimations;
+                if (source.Length == 0) continue;
+
+                bool changed = false;
+                var clips = new ModelImporterClipAnimation[source.Length];
+                for (int i = 0; i < source.Length; i++)
+                {
+                    clips[i] = source[i];
+                    if (!loopers.Contains(clips[i].name) || clips[i].loopTime) continue;
+                    clips[i].loopTime = true;
+                    clips[i].loopPose = true;
+                    changed = true;
+                }
+
+                if (!changed) continue;
+                imp.clipAnimations = clips;
+                imp.SaveAndReimport();
+                Debug.Log($"[MonsterChase] Set looping on the locomotion clips in {System.IO.Path.GetFileName(path)}.");
+            }
+        }
+
+        /// <summary>
         /// A controller with exactly the states the hunt uses and no transitions between
         /// them. MonsterAnimation drives it by CrossFade on clip name, so transitions
         /// would only ever fight it.
@@ -187,6 +230,8 @@ namespace MonsterChase.EditorTools
         {
             const string path = "Assets/_Project/Animation/DemonHunt.controller";
             System.IO.Directory.CreateDirectory("Assets/_Project/Animation");
+
+            EnsureLoopingClips();
 
             var existing = AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(path);
             if (existing != null) return existing;
