@@ -23,16 +23,18 @@ namespace MonsterChase.Monster
         [SerializeField] string deathClip = "Demon|Death";
 
         [Header("Thresholds")]
-        [SerializeField] float walkAbove = 0.15f;
+        [Tooltip("Any real movement at all should be a walk, never the idle. Idle while the agent slides it along is the foot-sliding.")]
+        [SerializeField] float walkAbove = 0.05f;
         [SerializeField] float runAbove = 3.2f;
-        [SerializeField] float crossFade = 0.2f;
+        [SerializeField] float crossFade = 0.12f;
 
         [Header("Stride matching")]
         [Tooltip("Ground speed the walk clip was authored for.")]
         [SerializeField] float walkClipSpeed = 1.4f;
         [Tooltip("Ground speed the run clip was authored for.")]
         [SerializeField] float runClipSpeed = 3.4f;
-        [SerializeField] Vector2 playbackClamp = new Vector2(0.6f, 2.2f);
+        [Tooltip("Wide, because a clamped stride is a sliding stride: if the legs cannot keep up with the ground speed the feet skate.")]
+        [SerializeField] Vector2 playbackClamp = new Vector2(0.4f, 4f);
 
         MonsterVitals vitals;
         string current = "";
@@ -58,7 +60,15 @@ namespace MonsterChase.Monster
 
             if (vitals.Current != MonsterVitals.State.Hunting) return;
 
-            float speed = agent != null ? agent.velocity.magnitude : 0f;
+            // Horizontal only. Vertical velocity from the agent settling onto the
+            // navmesh would otherwise register as movement and start a walk cycle on
+            // the spot.
+            float speed = 0f;
+            if (agent != null)
+            {
+                var flat = agent.velocity; flat.y = 0f;
+                speed = flat.magnitude;
+            }
 
             if (speed >= runAbove) Play(runClip);
             else if (speed >= walkAbove) Play(walkClip);
@@ -73,14 +83,20 @@ namespace MonsterChase.Monster
         /// </summary>
         void MatchStride(float speed)
         {
+            bool locomotion = current == runClip || current == walkClip;
+
             float target = 1f;
             if (current == runClip && runClipSpeed > 0.01f) target = speed / runClipSpeed;
             else if (current == walkClip && walkClipSpeed > 0.01f) target = speed / walkClipSpeed;
 
-            if (current != runClip && current != walkClip) target = 1f;
-            else target = Mathf.Clamp(target, playbackClamp.x, playbackClamp.y);
+            if (locomotion) target = Mathf.Clamp(target, playbackClamp.x, playbackClamp.y);
+            else target = 1f;
 
-            animator.speed = Mathf.Lerp(animator.speed, target, 8f * Time.deltaTime);
+            // Snap rather than ease while moving. Easing the playback rate is itself a
+            // slide: for the fraction of a second it takes to catch up, the ground is
+            // moving faster than the legs.
+            animator.speed = locomotion ? target
+                                        : Mathf.Lerp(animator.speed, 1f, 8f * Time.deltaTime);
         }
 
         void Play(string clip, float fade = -1f)

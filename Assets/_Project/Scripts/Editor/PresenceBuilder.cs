@@ -39,6 +39,20 @@ namespace MonsterChase.EditorTools
             body.transform.localPosition = Vector3.zero;
             body.transform.localRotation = Quaternion.identity;
 
+            // Drop the weapon first. The pack ships the demon holding a ball it does
+            // nothing with, and it hangs below the feet -- so measuring the model's
+            // lowest point was measuring the ball, and seating that on the ground
+            // lifted the creature into the air. This is the hovering.
+            int removed = 0;
+            foreach (var r in body.GetComponentsInChildren<Renderer>(true))
+            {
+                var n = r.name.ToLowerInvariant();
+                if (!n.Contains("ball") && !n.Contains("weapon")) continue;
+                Object.DestroyImmediate(r.gameObject);
+                removed++;
+            }
+            if (removed > 0) Debug.Log($"[MonsterChase] Removed {removed} weapon prop(s) from the demon.");
+
             // Measured, not guessed: scale until it actually stands at the target.
             body.transform.localScale = Vector3.one;
             float measured = MeasureHeight(body);
@@ -69,12 +83,14 @@ namespace MonsterChase.EditorTools
                     if (avatar != null) animator.avatar = avatar;
                     else Debug.LogWarning("[MonsterChase] No avatar for the demon; it will not animate.");
                 }
-                if (animator.runtimeAnimatorController == null)
-                {
-                    var c = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
-                        $"{DemonRoot}/DemoSceneAssets/DemoAnimCont.controller");
-                    if (c != null) animator.runtimeAnimatorController = c;
-                }
+                // Never the pack's DemoAnimCont. It is a showreel: its own transitions
+                // cycle Jump, Throw, Telepathic and Shoot regardless of what the AI
+                // wants, which is the random flailing -- and the jump clips lift the
+                // model off the floor, which is the hovering.
+                animator.runtimeAnimatorController = HuntController();
+
+                // Root motion would fight the NavMeshAgent for who moves the thing.
+                animator.applyRootMotion = false;
             }
 
             // Its colliders would fight the NavMeshAgent and bake into the navmesh.
@@ -160,6 +176,49 @@ namespace MonsterChase.EditorTools
             float min = renderers[0].bounds.min.y;
             for (int i = 1; i < renderers.Length; i++) min = Mathf.Min(min, renderers[i].bounds.min.y);
             return min;
+        }
+
+        /// <summary>
+        /// A controller with exactly the states the hunt uses and no transitions between
+        /// them. MonsterAnimation drives it by CrossFade on clip name, so transitions
+        /// would only ever fight it.
+        /// </summary>
+        static RuntimeAnimatorController HuntController()
+        {
+            const string path = "Assets/_Project/Animation/DemonHunt.controller";
+            System.IO.Directory.CreateDirectory("Assets/_Project/Animation");
+
+            var existing = AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(path);
+            if (existing != null) return existing;
+
+            var clips = new System.Collections.Generic.Dictionary<string, AnimationClip>();
+            foreach (var guid in AssetDatabase.FindAssets("t:Model", new[] { DemonRoot }))
+                foreach (var sub in AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GUIDToAssetPath(guid)))
+                    if (sub is AnimationClip clip && !clip.name.StartsWith("__preview__"))
+                        clips[clip.name] = clip;
+
+            var ctrl = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(path);
+            var sm = ctrl.layers[0].stateMachine;
+
+            // Idle is the default; everything else is entered only by CrossFade.
+            string[] wanted = { "Demon|Idle1", "Demon|Walk1", "Demon|Run1",
+                                "Demon|Get-damage", "Demon|Death" };
+            foreach (var name in wanted)
+            {
+                if (!clips.TryGetValue(name, out var clip))
+                {
+                    Debug.LogWarning($"[MonsterChase] Clip '{name}' missing from the demon pack.");
+                    continue;
+                }
+                var state = sm.AddState(name);
+                state.motion = clip;
+                state.writeDefaultValues = false;
+                if (name.EndsWith("Idle1")) sm.defaultState = state;
+            }
+
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[MonsterChase] Built {path}: {sm.states.Length} states, no transitions.");
+            return AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(path);
         }
 
         public static float MeasureHeight(GameObject go)
