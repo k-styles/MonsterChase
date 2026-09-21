@@ -42,9 +42,14 @@ namespace MonsterChase.Interaction
 
             if (current == null) { Prompt = ""; return; }
 
-            Prompt = current.CanInteract ? current.Prompt : "";
-            if (!current.CanInteract) return;
-            if (Cursor.lockState != CursorLockMode.Locked) return;
+            // Gate the prompt and the input on the same condition. They used to differ:
+            // the prompt was set before the cursor-lock check and the input after it, so
+            // whenever the Game view lost focus you could see "hold to burn" and holding
+            // did nothing at all.
+            bool accepting = Time.timeScale > 0f;
+
+            Prompt = current.CanInteract && accepting ? current.Prompt : "";
+            if (!current.CanInteract || !accepting) return;
 
             var kb = Keyboard.current;
             var mouse = Mouse.current;

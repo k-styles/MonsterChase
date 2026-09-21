@@ -52,6 +52,25 @@ namespace MonsterChase.Player
         public int ReserveMax => reserveMax;
         public bool Reloading => reloading;
 
+        /// <summary>
+        /// Retunes the gun for a newly equipped weapon. A reserve of -1 keeps whatever
+        /// is already carried, so swapping back and forth does not print ammo.
+        /// </summary>
+        public void Configure(float newDamage, float rate, int mag, int maxReserve, int newReserve)
+        {
+            damage = newDamage;
+            shotsPerSecond = rate;
+            magazine = mag;
+            reserveMax = maxReserve;
+
+            if (newReserve >= 0) reserve = Mathf.Clamp(newReserve, 0, reserveMax);
+            else reserve = Mathf.Clamp(reserve, 0, reserveMax);
+
+            Ammo = Mathf.Min(Ammo, magazine);
+            reloading = false;
+            nextShot = 0f;
+        }
+
         /// <summary>Returns what was actually taken, so a full player leaves the box alone.</summary>
         public int AddAmmo(int rounds)
         {

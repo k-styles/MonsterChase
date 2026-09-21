@@ -30,6 +30,18 @@ namespace MonsterChase.Player
 
         public Transform Muzzle => muzzle != null ? muzzle : transform;
 
+        /// <summary>Points the kick and sway at a newly equipped weapon's model.</summary>
+        public void SetModel(Transform newModel, Transform newMuzzle)
+        {
+            if (newModel != null)
+            {
+                model = newModel;
+                restPos = model.localPosition;
+                restRot = model.localRotation;
+            }
+            if (newMuzzle != null) muzzle = newMuzzle;
+        }
+
         void Awake()
         {
             if (model == null) model = transform;

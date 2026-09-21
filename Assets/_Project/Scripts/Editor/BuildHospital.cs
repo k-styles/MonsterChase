@@ -409,6 +409,7 @@ namespace MonsterChase.EditorTools
             gso.FindProperty("fireAudio").objectReferenceValue = audio;
             gso.FindProperty("interactor").objectReferenceValue = interactor;
             gso.FindProperty("viewModel").objectReferenceValue = viewModel;
+            gso.FindProperty("fx").objectReferenceValue = BuiltFx;
 
             FillClips(gso.FindProperty("fireClips"),
                 "handgun_gunshot_01", "handgun_gunshot_02", "handgun_gunshot_03");
@@ -420,10 +421,38 @@ namespace MonsterChase.EditorTools
 
             gso.ApplyModifiedPropertiesWithoutUndo();
 
+            var loadout = player.AddComponent<MonsterChase.Player.GunLoadout>();
+            var lso = new SerializedObject(loadout);
+            lso.FindProperty("gun").objectReferenceValue = gun;
+            lso.FindProperty("viewModel").objectReferenceValue = viewModel;
+            lso.FindProperty("fx").objectReferenceValue = BuiltFx;
+
+            var arr = lso.FindProperty("weapons");
+            var list = BuiltWeapons ?? new List<MonsterChase.Player.GunLoadout.Weapon>();
+            arr.arraySize = list.Count;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var e = arr.GetArrayElementAtIndex(i);
+                e.FindPropertyRelative("name").stringValue = list[i].name;
+                e.FindPropertyRelative("model").objectReferenceValue = list[i].model;
+                e.FindPropertyRelative("muzzle").objectReferenceValue = list[i].muzzle;
+                e.FindPropertyRelative("damage").floatValue = list[i].damage;
+                e.FindPropertyRelative("shotsPerSecond").floatValue = list[i].shotsPerSecond;
+                e.FindPropertyRelative("magazine").intValue = list[i].magazine;
+                e.FindPropertyRelative("reserveMax").intValue = list[i].reserveMax;
+                e.FindPropertyRelative("startingReserve").intValue = list[i].startingReserve;
+            }
+            lso.ApplyModifiedPropertiesWithoutUndo();
+            Debug.Log($"[Guns] Rack of {list.Count}: scroll to swap, middle click for the list.");
+
             return player;
         }
 
-        /// <summary>The gun you can see: model, muzzle point and flash, riding the camera.</summary>
+        /// <summary>Filled by BuildViewModel so the caller can wire the loadout.</summary>
+        internal static List<MonsterChase.Player.GunLoadout.Weapon> BuiltWeapons;
+        internal static MonsterChase.Player.GunFx BuiltFx;
+
+        /// <summary>The guns you can see: models, muzzles and flash, riding the camera.</summary>
         internal static GunViewModel BuildViewModel(Transform camera)
         {
             var rig = new GameObject("ViewModel");
@@ -433,32 +462,65 @@ namespace MonsterChase.EditorTools
             // forward. The 186 degrees that used to be here pointed it at the player.
             rig.transform.localRotation = Quaternion.identity;
 
-            const string gunPath = "Assets/Low Poly Guns/Models/Guns/pistol1/pistol1.fbx";
-            var fbx = AssetDatabase.LoadAssetAtPath<GameObject>(gunPath);
-            Transform model = rig.transform;
-
-            if (fbx != null)
+            // One entry per weapon in the rack. Stats differ enough that swapping is a
+            // decision rather than a cosmetic choice.
+            var rack = new (string file, string name, float dmg, float rate, int mag, int reserve, float len)[]
             {
+                ("pistol1",  "pistol",  26f,  4.0f, 12, 36, 0.18f),
+                ("smg2",     "smg",     16f, 11.0f, 30, 90, 0.26f),
+                ("shotgun1", "shotgun", 62f,  1.3f,  6, 24, 0.34f),
+                ("assault2", "rifle",   30f,  7.5f, 25, 75, 0.32f),
+                ("sniper1",  "sniper", 110f,  0.8f,  5, 15, 0.42f),
+            };
+
+            BuiltWeapons = new List<MonsterChase.Player.GunLoadout.Weapon>();
+            Transform model = rig.transform;
+            Transform muzzleT = null;
+
+            foreach (var entry in rack)
+            {
+                var path = $"Assets/Low Poly Guns/Models/Guns/{entry.file}/{entry.file}.fbx";
+                var fbx = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                if (fbx == null) { Debug.LogWarning($"[Guns] {entry.file} is not in the pack."); continue; }
+
                 var instance = (GameObject)PrefabUtility.InstantiatePrefab(fbx, rig.transform);
-                instance.name = "Pistol";
+                instance.name = entry.name;
                 instance.transform.localPosition = Vector3.zero;
                 instance.transform.localRotation = Quaternion.identity;
 
-                // Measured, because a bought FBX is whatever scale its author saved it at.
-                float len = PresenceBuilder.MeasureHeight(instance);
-                if (len > 0.0001f) instance.transform.localScale = Vector3.one * (0.18f / len);
+                // Measured per weapon: these five are not saved at the same scale.
+                float measured = PresenceBuilder.MeasureHeight(instance);
+                if (measured > 0.0001f) instance.transform.localScale = Vector3.one * (entry.len / measured);
 
                 foreach (var c in instance.GetComponentsInChildren<Collider>()) Object.DestroyImmediate(c);
-                model = instance.transform;
-            }
-            else Debug.LogWarning("[Hospital] Gun pack missing; the gun is invisible.");
 
-            var muzzle = new GameObject("Muzzle");
-            muzzle.transform.SetParent(rig.transform, false);
-            muzzle.transform.localPosition = new Vector3(0f, 0.02f, 0.22f);
+                var mz = new GameObject("Muzzle");
+                mz.transform.SetParent(instance.transform, false);
+                float invScale = 1f / Mathf.Max(0.0001f, instance.transform.localScale.z);
+                mz.transform.localPosition = new Vector3(0f, 0.02f * invScale, 0.22f * invScale);
+
+                BuiltWeapons.Add(new MonsterChase.Player.GunLoadout.Weapon
+                {
+                    name = entry.name, model = instance, muzzle = mz.transform,
+                    damage = entry.dmg, shotsPerSecond = entry.rate,
+                    magazine = entry.mag, reserveMax = entry.reserve * 2,
+                    startingReserve = entry.reserve,
+                });
+
+                if (muzzleT == null) { model = instance.transform; muzzleT = mz.transform; }
+                instance.SetActive(BuiltWeapons.Count == 1);
+            }
+
+            if (muzzleT == null)
+            {
+                var fallback = new GameObject("Muzzle");
+                fallback.transform.SetParent(rig.transform, false);
+                fallback.transform.localPosition = new Vector3(0f, 0.02f, 0.22f);
+                muzzleT = fallback.transform;
+            }
 
             var flashGo = new GameObject("MuzzleFlash");
-            flashGo.transform.SetParent(muzzle.transform, false);
+            flashGo.transform.SetParent(muzzleT, false);
             var flash = flashGo.AddComponent<Light>();
             flash.type = LightType.Point;
             flash.color = new Color(1f, 0.82f, 0.5f);
@@ -466,12 +528,12 @@ namespace MonsterChase.EditorTools
             flash.range = 9f;
             flash.enabled = false;
 
-            BuildGunFx(rig.transform, muzzle.transform);
+            BuiltFx = BuildGunFx(rig.transform, muzzleT);
 
             var vm = rig.AddComponent<GunViewModel>();
             var so = new SerializedObject(vm);
             so.FindProperty("model").objectReferenceValue = model;
-            so.FindProperty("muzzle").objectReferenceValue = muzzle.transform;
+            so.FindProperty("muzzle").objectReferenceValue = muzzleT;
             so.FindProperty("flash").objectReferenceValue = flash;
             so.ApplyModifiedPropertiesWithoutUndo();
             return vm;
@@ -695,6 +757,17 @@ namespace MonsterChase.EditorTools
             so.FindProperty("prompt").objectReferenceValue = prompt;
             so.ApplyModifiedPropertiesWithoutUndo();
 
+            var wheelGo = new GameObject("WeaponWheel", typeof(RectTransform), typeof(CanvasGroup));
+            wheelGo.transform.SetParent(canvasGo.transform, false);
+            UiKit.Place(wheelGo.GetComponent<RectTransform>(), 0.72f, 0.97f, 0.20f, 0.45f);
+            var wheelText = UiKit.NewText("List", wheelGo.transform, 26, TextAnchor.LowerRight);
+            UiKit.Stretch(wheelText.rectTransform);
+            var wheel = wheelGo.AddComponent<MonsterChase.UI.WeaponWheel>();
+            var wso = new SerializedObject(wheel);
+            wso.FindProperty("label").objectReferenceValue = wheelText;
+            wso.FindProperty("group").objectReferenceValue = wheelGo.GetComponent<CanvasGroup>();
+            wso.ApplyModifiedPropertiesWithoutUndo();
+
             var ammo = UiKit.NewText("Ammo", canvasGo.transform, 40, TextAnchor.LowerRight);
             UiKit.Place(ammo.rectTransform, 0.70f, 0.96f, 0.05f, 0.12f);
             var counter = canvasGo.AddComponent<MonsterChase.UI.AmmoCounter>();
@@ -806,9 +879,16 @@ namespace MonsterChase.EditorTools
         /// Body-sized rather than bonfire-sized: a floor fire reads as a corpse
         /// alight, where the big variants read as a burning building.
         /// </summary>
-        internal static ParticleSystem AttachFire(Transform parent) => AttachFire(parent, out _);
+        internal static ParticleSystem AttachFire(Transform parent) =>
+            AttachFire(parent, Vector3.zero, out _);
 
-        internal static ParticleSystem AttachFire(Transform parent, out AudioSource crackle)
+        internal static ParticleSystem AttachFire(Transform parent, out AudioSource crackle) =>
+            AttachFire(parent, Vector3.zero, out crackle);
+
+        /// <summary><paramref name="localOffset"/> is where the fire starts -- the torso,
+        /// not the feet, so a burning body burns from the middle outwards.</summary>
+        internal static ParticleSystem AttachFire(Transform parent, Vector3 localOffset,
+                                                  out AudioSource crackle)
         {
             crackle = null;
             var prefab = FindPrefab("VFX_Fire_Floor_02_Smoke") ?? FindPrefab("VFX_Fire_Floor_01_Smoke");
@@ -820,7 +900,7 @@ namespace MonsterChase.EditorTools
 
             var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, parent);
             go.name = "Fire";
-            go.transform.localPosition = new Vector3(0f, 0.05f, 0f);
+            go.transform.localPosition = localOffset + new Vector3(0f, 0.05f, 0f);
             go.transform.localScale = Vector3.one * 0.75f;
 
             // AnchorSite stops it on Start; it must not be burning before you light it.

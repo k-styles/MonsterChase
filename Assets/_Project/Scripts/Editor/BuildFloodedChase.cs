@@ -223,13 +223,18 @@ namespace MonsterChase.EditorTools
 
                 var lightGo = new GameObject("FireLight");
                 lightGo.transform.SetParent(body.transform, false);
-                lightGo.transform.localPosition = Vector3.up * 0.6f;
                 var l = lightGo.AddComponent<Light>();
                 l.type = LightType.Point;
                 l.color = new Color(1f, 0.55f, 0.2f);
                 l.intensity = 6f; l.range = 14f; l.enabled = false;
 
-                var fireRoot = BuildHospital.AttachFire(body.transform, out var crackle);
+                // Start it at the stomach: the centre of the corpse's own bounds, a
+                // little above the ground, rather than at the transform origin.
+                var torso = CorpseBounds(corpse, body.transform).center;
+                torso.y = Mathf.Max(0.12f, torso.y);
+                var fireRoot = BuildHospital.AttachFire(body.transform, torso, out var crackle);
+
+                lightGo.transform.localPosition = torso + Vector3.up * 0.35f;
 
                 var anchor = body.AddComponent<AnchorSite>();
                 var so = new SerializedObject(anchor);

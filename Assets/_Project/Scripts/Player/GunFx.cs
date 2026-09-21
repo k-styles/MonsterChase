@@ -50,5 +50,14 @@ namespace MonsterChase.Player
         }
 
         public Transform Muzzle => muzzle != null ? muzzle : transform;
+
+        /// <summary>Moves the flash, smoke and brass to a newly equipped barrel.</summary>
+        public void SetMuzzle(Transform newMuzzle)
+        {
+            if (newMuzzle == null) return;
+            muzzle = newMuzzle;
+            foreach (var ps in new[] { flash, smoke, brass })
+                if (ps != null) ps.transform.SetParent(newMuzzle, false);
+        }
     }
 }

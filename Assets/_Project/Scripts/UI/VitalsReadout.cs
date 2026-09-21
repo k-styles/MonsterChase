@@ -47,6 +47,7 @@ namespace MonsterChase.UI
                 : $"heals {monster.CurrentHealRate:F0}/s after {monster.CurrentHealDelay:F1}s";
 
             readout.text =
+                Diagnostics() +
                 $"anchors   {burned}/{total}\n" +
                 $"state     {monster.Current}\n" +
                 $"health    {monster.Health:F0}/{monster.MaxHealth:F0}\n" +
@@ -59,6 +60,31 @@ namespace MonsterChase.UI
                 healthFill.fillAmount = monster.MaxHealth > 0f ? monster.Health / monster.MaxHealth : 0f;
 
             TickAnchorPrompt();
+        }
+
+        /// <summary>
+        /// Why the thing under your crosshair is or is not responding. Every link in
+        /// the chain from input to burn progress, so a failure names itself instead of
+        /// being guessed at from a description.
+        /// </summary>
+        string Diagnostics()
+        {
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            bool holdDown = (mouse != null && mouse.leftButton.isPressed)
+                         || (kb != null && (kb.eKey.isPressed || kb.fKey.isPressed));
+
+            var target = interactor != null ? interactor.Current : null;
+            var anchor = target as AnchorSite;
+
+            return
+                $"seen      {AnchorSite.MonsterSeen}\n" +
+                $"cursor    {Cursor.lockState}\n" +
+                $"target    {(target == null ? "none" : target.GetType().Name)}" +
+                $"  can={(target != null && target.CanInteract)}\n" +
+                $"holding   {holdDown}" +
+                (anchor != null ? $"   burn {anchor.Progress * 100f:F0}%  feeding={anchor.BeingBurned}" : "") +
+                "\n\n";
         }
 
         /// <summary>
